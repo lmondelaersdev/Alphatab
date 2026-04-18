@@ -145,39 +145,68 @@
 
 <script>
   const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@latest/dist/';
-
-  /* ─── AlphaTab init ─── */
   const atEl = document.getElementById('at-element');
 
-  const api  = new alphaTab.AlphaTabApi(atEl, {
+  /* ───────────────────────────────────────────
+     AlphaTab Init (iOS Optimized)
+  ─────────────────────────────────────────── */
+
+  const api = new alphaTab.AlphaTabApi(atEl, {
     core: { fontDirectory: CDN + 'font/' },
     display: { layoutMode: 0, staveProfile: 0, scale: 1.0 },
     player: {
-      enablePlayer:  true,
-      enableCursor:  true,
-      soundFont:     CDN + 'soundfont/sonivox.sf2',
-      playerMode:    3 // STRICT NATIVE BACKING TRACK MODE (Handles GP8 sync perfectly)
+      enablePlayer: true,
+      enableCursor: true,
+      soundFont: CDN + 'soundfont/sonivox.sf2',
+      playerMode: 1 // Better compatibility for iOS (mixed WebAudio mode)
     }
   });
 
-  /* ─── iOS AudioContext Unlocker ─── */
-  // Apple Safari suspends WebAudio contexts if they are created outside a strict user tap.
-  // This physically forcefully unlocks the AlphaTab engine when you hit the Play button.
+  /* ───────────────────────────────────────────
+     iOS Audio Unlock (WebAudio + Native Audio)
+  ─────────────────────────────────────────── */
+
   function forceUnlockAppleAudio() {
-    if (api.player && api.player.synth && api.player.synth.audioContext) {
-      const ctx = api.player.synth.audioContext;
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(err => console.warn('Apple Audio Context could not resume:', err));
-      }
+    if (!api.player || !api.player.synth || !api.player.synth.audioContext) return;
+
+    const ctx = api.player.synth.audioContext;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        // Silent buffer trick (required by iOS)
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+      }).catch(() => {});
+    }
+
+    // Unlock backing track <audio> element (GP8)
+    if (api.player.backingTrackAudio) {
+      try {
+        const audio = api.player.backingTrackAudio;
+        audio.play().then(() => audio.pause()).catch(() => {});
+      } catch (e) {}
     }
   }
 
-  /* ─── File loading ─── */
-  const fileInput  = document.getElementById('file-input');
+  // Resume AudioContext when returning to tab
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      forceUnlockAppleAudio();
+    }
+  });
+
+  /* ───────────────────────────────────────────
+     File Loading
+  ─────────────────────────────────────────── */
+
+  const fileInput = document.getElementById('file-input');
   const dropOverlay = document.getElementById('drop-overlay');
   const loadOverlay = document.getElementById('load-overlay');
-  const dropBox    = document.getElementById('drop-box');
-  const viewport   = document.getElementById('viewport');
+  const dropBox = document.getElementById('drop-box');
+  const viewport = document.getElementById('viewport');
 
   function openFile(file) {
     if (!file) return;
@@ -187,36 +216,63 @@
   }
 
   document.getElementById('btn-open').addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+  fileInput.addEventListener('change', e => {
+    openFile(e.target.files[0]);
+    e.target.value = '';
+  });
+
   dropBox.addEventListener('click', () => fileInput.click());
-
-  viewport.addEventListener('dragover', e => { e.preventDefault(); dropBox.classList.add('drag-over'); });
+  viewport.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropBox.classList.add('drag-over');
+  });
   viewport.addEventListener('dragleave', () => dropBox.classList.remove('drag-over'));
-  viewport.addEventListener('drop', e => { e.preventDefault(); dropBox.classList.remove('drag-over'); openFile(e.dataTransfer.files[0]); });
+  viewport.addEventListener('drop', e => {
+    e.preventDefault();
+    dropBox.classList.remove('drag-over');
+    openFile(e.dataTransfer.files[0]);
+  });
 
-  /* ─── Score events ─── */
+  /* ───────────────────────────────────────────
+     Score Events
+  ─────────────────────────────────────────── */
+
   const trackListEl = document.getElementById('track-list');
-  const songInfoEl  = document.getElementById('song-info');
+  const songInfoEl = document.getElementById('song-info');
   const COLORS = ['#e94560','#4299e1','#48bb78','#ed8936','#9f7aea','#f6ad55','#38b2ac','#fc8181','#f687b3','#68d391'];
 
   api.scoreLoaded.on(score => {
     dropOverlay.classList.add('hidden');
+
     const title  = score.title  || 'Untitled';
     const artist = score.artist || '';
-    
-    // Check if backing track natively loaded successfully
-    const bt = score.backingTrack;
-    const hasBt = !!(bt && bt.rawAudioFile && bt.rawAudioFile.length);
-    const diag = hasBt ? "Native Audio Embedded!" : "";
-    songInfoEl.innerHTML = `<strong>${title}</strong>${artist ? ' &mdash; ' + artist : ''} <span style="color:var(--accent)">${diag}</span>`;
+    const hasBt  = !!(score.backingTrack && score.backingTrack.rawAudioFile?.length);
+
+    songInfoEl.innerHTML =
+      `<strong>${title}</strong>${artist ? ' &mdash; ' + artist : ''}` +
+      (hasBt ? ` <span style="color:var(--accent)">Audio Embedded</span>` : '');
 
     trackListEl.innerHTML = '';
+
     score.tracks.forEach((track, i) => {
       const row = document.createElement('div');
       row.className = 'track-item';
-      row.innerHTML = `<div class="track-dot" style="background:${COLORS[i % COLORS.length]}"></div><span class="track-name">${track.name || 'Track '+(i+1)}</span><button class="t-btn" data-role="mute">M</button><button class="t-btn" data-role="solo">S</button>`;
-      row.querySelector('[data-role="mute"]').addEventListener('click', e => { e.stopPropagation(); api.changeTrackMute([track], e.target.classList.toggle('on')); });
-      row.querySelector('[data-role="solo"]').addEventListener('click', e => { e.stopPropagation(); api.changeTrackSolo([track], e.target.classList.toggle('on')); });
+      row.innerHTML =
+        `<div class="track-dot" style="background:${COLORS[i % COLORS.length]}"></div>
+         <span class="track-name">${track.name || 'Track '+(i+1)}</span>
+         <button class="t-btn" data-role="mute">M</button>
+         <button class="t-btn" data-role="solo">S</button>`;
+
+      row.querySelector('[data-role="mute"]').addEventListener('click', e => {
+        e.stopPropagation();
+        api.changeTrackMute([track], e.target.classList.toggle('on'));
+      });
+
+      row.querySelector('[data-role="solo"]').addEventListener('click', e => {
+        e.stopPropagation();
+        api.changeTrackSolo([track], e.target.classList.toggle('on'));
+      });
+
       trackListEl.appendChild(row);
     });
   });
@@ -224,27 +280,47 @@
   api.renderStarted.on(() => loadOverlay.classList.remove('hidden'));
   api.postRenderFinished.on(() => loadOverlay.classList.add('hidden'));
 
-  /* ─── Playback controls ─── */
+  /* ───────────────────────────────────────────
+     Playback Controls
+  ─────────────────────────────────────────── */
+
   const btnPlay  = document.getElementById('btn-play');
   const btnStop  = document.getElementById('btn-stop');
   const timeDsp  = document.getElementById('time');
   const progFill = document.getElementById('prog-fill');
 
-  // Trigger Apple Audio Unlock directly alongside the api.playPause()
-  btnPlay.addEventListener('click', () => { 
-      forceUnlockAppleAudio(); 
-      api.playPause(); 
+  btnPlay.addEventListener('click', () => {
+    forceUnlockAppleAudio(); // MUST be inside user tap
+    api.playPause();
   });
-  
+
   btnStop.addEventListener('click', () => api.stop());
 
-  document.getElementById('btn-loop').addEventListener('click', e => { api.isLooping = !api.isLooping; e.target.classList.toggle('on', api.isLooping); });
-  document.getElementById('btn-metro').addEventListener('click', e => { const on = api.metronomeVolume === 0; api.metronomeVolume = on ? 1 : 0; e.target.classList.toggle('on', on); });
-  document.getElementById('btn-countin').addEventListener('click', e => { const on = api.countInVolume === 0; api.countInVolume = on ? 1 : 0; e.target.classList.toggle('on', on); });
+  document.getElementById('btn-loop').addEventListener('click', e => {
+    api.isLooping = !api.isLooping;
+    e.target.classList.toggle('on', api.isLooping);
+  });
 
-  api.playerStateChanged.on(e => { btnPlay.innerHTML = e.state === 1 ? '&#9646;&#9646;' : '&#9654;'; });
+  document.getElementById('btn-metro').addEventListener('click', e => {
+    const on = api.metronomeVolume === 0;
+    api.metronomeVolume = on ? 1 : 0;
+    e.target.classList.toggle('on', on);
+  });
 
-  function fmt(ms) { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`; }
+  document.getElementById('btn-countin').addEventListener('click', e => {
+    const on = api.countInVolume === 0;
+    api.countInVolume = on ? 1 : 0;
+    e.target.classList.toggle('on', on);
+  });
+
+  api.playerStateChanged.on(e => {
+    btnPlay.innerHTML = e.state === 1 ? '&#9646;&#9646;' : '&#9654;';
+  });
+
+  function fmt(ms) {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+  }
 
   api.playerPositionChanged.on(e => {
     timeDsp.textContent = `${fmt(e.currentTime)} / ${fmt(e.endTime)}`;
@@ -264,9 +340,23 @@
     api.playbackSpeed = v / 100;
   });
 
-  document.getElementById('sel-layout').addEventListener('change', e => { api.settings.display.layoutMode = parseInt(e.target.value, 10); api.updateSettings(); api.render(); });
-  document.getElementById('sel-stave').addEventListener('change', e => { api.settings.display.staveProfile = parseInt(e.target.value, 10); api.updateSettings(); api.render(); });
-  document.getElementById('sel-zoom').addEventListener('change', e => { api.settings.display.scale = parseFloat(e.target.value); api.updateSettings(); api.render(); });
+  document.getElementById('sel-layout').addEventListener('change', e => {
+    api.settings.display.layoutMode = parseInt(e.target.value, 10);
+    api.updateSettings();
+    api.render();
+  });
+
+  document.getElementById('sel-stave').addEventListener('change', e => {
+    api.settings.display.staveProfile = parseInt(e.target.value, 10);
+    api.updateSettings();
+    api.render();
+  });
+
+  document.getElementById('sel-zoom').addEventListener('change', e => {
+    api.settings.display.scale = parseFloat(e.target.value);
+    api.updateSettings();
+    api.render();
+  });
 </script>
 </body>
 </html>
