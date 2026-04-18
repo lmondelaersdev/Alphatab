@@ -36,7 +36,8 @@
         <span id="mode-pill" class="pill">SYNTH</span>
         <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; padding-left: 5px;">Load a .gp file…</div>
         <button class="btn" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open</button>
-        <input type="file" id="file-input" accept=".gp,.gpx,.gp3,.gp4,.gp5,.gp7" style="display:none" />
+        <!-- No accept filter: iOS has no UTI for .gp and will grey everything out -->
+        <input type="file" id="file-input" style="display:none" />
     </div>
     <div id="main"><div id="at-element"></div></div>
     <div id="footer">
@@ -87,14 +88,17 @@
 
         // Pre-touch the <audio> element inside the gesture so Safari trusts it
         // when we later swap its src and call .play() from another gesture.
+        // Note: pause() races play() on this 1-frame WAV and "aborts" the
+        // play promise — that's fine, the user-activation grant still sticks.
         externalAudio.src = SILENT_WAV;
         try {
-            await externalAudio.play();
+            const p = externalAudio.play();
             externalAudio.pause();
             externalAudio.currentTime = 0;
-            log("Audio element pre-warmed.");
+            await p.catch(() => {}); // swallow expected AbortError
+            log("Audio element activated.");
         } catch (e) {
-            log("Audio pre-warm failed (non-fatal): " + e.message);
+            log("Audio activation skipped: " + e.message);
         }
 
         // ── Init alphaTab in EXTERNAL MEDIA mode ─────────────────────────
