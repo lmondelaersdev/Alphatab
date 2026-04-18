@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - The Reboot Fix</title>
+    <title>AlphaTab Safari - Perfect Sync Convert</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -68,12 +68,13 @@
     let api = null;
     let webAudioCtx = null;
     
-    let isConverting = false;
-    let wavApplied = false;
+    // Hack flags
+    let isHijacked = false;
+    let globalAudioElement = null;
 
     // --- RAW PCM TO WAV BYTE ARRAY ---
     function audioBufferToWavBlob(buffer) {
-        log("Encoding raw PCM memory to WAV bytes...");
+        log("Encoding raw PCM to perfect WAV...");
         const numOfChan = buffer.numberOfChannels;
         const length = buffer.length * numOfChan * 2 + 44;
         const out = new ArrayBuffer(length);
@@ -116,8 +117,7 @@
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
-                    enableUserInteraction: true,
-                    enableBackingTracks: true,
+                    enableBackingTracks: true, // AlphaTab MUST build the OGG blob first
                     soundFont: CDN + 'soundfont/sonivox.sf2' 
                 }
             });
@@ -141,12 +141,8 @@
             btnPlay.innerText = "⏳";
             btnPlay.style.background = "#475569";
             
-            isConverting = false;
-            wavApplied = false;
-            
-            // Clear settings so it generates the embedded OGG blob again
-            api.settings.player.backingTrack = "";
-            api.updateSettings();
+            isHijacked = false; 
+            globalAudioElement = null;
             
             log("Loading file...");
             const reader = new FileReader();
@@ -154,25 +150,19 @@
             reader.readAsArrayBuffer(file);
         });
 
+        // --- THE DEEP MEMORY SCANNER ---
         api.playerReady.on(() => {
-            // IF WE ALREADY DID THE HACK, SAFELY UNLOCK THE UI AND STOP
-            if (wavApplied) {
-                log("Engine safely Rebooted with WAV! System Ready.");
-                btnPlay.innerText = "▶";
-                btnPlay.disabled = false;
-                btnPlay.style.background = "var(--accent)";
-                return;
-            }
-
-            if (isConverting) return; // Prevent double firing
-
-            let foundUrl = null;
+            if (isHijacked) return; 
+            isHijacked = true;
+            
+            log("Engine Ready! Hunting for Safari's blocked audio...");
+            
             const searchForAudio = (obj, depth = 0) => {
-                if(depth > 6 || !obj || foundUrl) return;
+                if(depth > 6 || !obj || globalAudioElement) return;
                 for(let key in obj) {
                     try {
                         if(obj[key] instanceof HTMLAudioElement && obj[key].src && obj[key].src.startsWith('blob:')) {
-                            foundUrl = obj[key].src;
+                            globalAudioElement = obj[key];
                             return;
                         } else if (typeof obj[key] === 'object') {
                             searchForAudio(obj[key], depth + 1);
@@ -183,30 +173,30 @@
             
             searchForAudio(api);
 
-            if (foundUrl) {
-                log("Found AlphaTab's OGG Blob. Hijacking...");
-                isConverting = true;
+            if (globalAudioElement && globalAudioElement.src) {
+                log("Got it! Ripping OGG data...");
+                const originalUrl = globalAudioElement.src;
                 
-                fetch(foundUrl)
+                fetch(originalUrl)
                     .then(res => res.arrayBuffer())
                     .then(buffer => webAudioCtx.decodeAudioData(buffer))
                     .then(decodedData => {
                         const wavBlob = audioBufferToWavBlob(decodedData);
                         const wavUrl = URL.createObjectURL(wavBlob);
                         
-                        log("WAV generated. Executing Score Reboot...");
-                        wavApplied = true;
+                        log("WAV generated. Swapping URL...");
                         
-                        // 1. Point settings to the new Safari-friendly WAV
-                        api.settings.player.backingTrack = wavUrl;
-                        api.updateSettings();
-                        
-                        // 2. FORCE REBOOT THE CURRENT SCORE TO PRESERVE SYNC AND RESET FLAGS
-                        if (api.score) {
-                            api.load(api.score);
-                        } else {
-                            log("Error: Score model vanished.");
-                        }
+                        // CRITICAL FIX: Lock the UI until Safari reads the WAV's metadata
+                        globalAudioElement.onloadedmetadata = () => {
+                            log(`Metadata locked! Audio Length: ${globalAudioElement.duration.toFixed(2)}s. Sync Map is safe.`);
+                            btnPlay.innerText = "▶";
+                            btnPlay.disabled = false;
+                            btnPlay.style.background = "var(--accent)";
+                        };
+
+                        // Inject the URL and force Safari to parse it
+                        globalAudioElement.src = wavUrl;
+                        globalAudioElement.load(); 
                     })
                     .catch(err => {
                         log("Conversion Error: " + err.message);
@@ -215,32 +205,25 @@
                         btnPlay.style.background = "var(--accent)";
                     });
             } else {
-                log("No audio blob found (MIDI only file).");
+                log("No audio element found. (MIDI Only)");
                 btnPlay.innerText = "▶";
                 btnPlay.disabled = false;
                 btnPlay.style.background = "var(--accent)";
             }
         });
 
-        // SAFARI AUDIO UNLOCK & CLICK LOGGER
+        // SAFARI AUDIO UNLOCK
         btnPlay.addEventListener('click', () => {
-            log(`Play clicked! isReadyForPlayback: ${api.isReadyForPlayback}`);
-            
-            if (!api.isReadyForPlayback) {
-                log("Warning: AlphaTab says it is NOT ready. Attempting to force anyway...");
-            }
-
             if (webAudioCtx.state === 'suspended') webAudioCtx.resume();
-            
             if (api.player?.synth?.audioContext?.state !== 'running') {
                 api.player.synth.audioContext.resume();
             }
-            
-            // Safari tickle
-            if (api.player && api.player.backingTrackAudio) {
-                api.player.backingTrackAudio.play().then(() => {
-                    if (api.player.state !== 1) api.player.backingTrackAudio.pause();
-                }).catch(e => log("Safari Play Block: " + e.message));
+
+            // Safari click-tickle
+            if (globalAudioElement) {
+                globalAudioElement.play().then(() => {
+                    if (api.player.state !== 1) globalAudioElement.pause();
+                }).catch(e => log("Safari Block: " + e.message));
             }
 
             api.playPause();
