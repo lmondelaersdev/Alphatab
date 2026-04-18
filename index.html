@@ -2,206 +2,180 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AlphaTab 1.8 - Safari Fix</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AlphaTab 1.8.1 - Safari Pro</title>
   <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
   <style>
     :root {
-      --accent:    #e94560;
-      --bg:        #0f172a;
-      --surface:   #1e293b;
-      --border:    #334155;
-      --text:      #e2e8f0;
-      --muted:     #94a3b8;
+      --accent: #e94560;
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
     }
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; }
-
-    #app { display: flex; flex-direction: column; height: 100dvh; }
-    
-    #header { height: 60px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 15px; flex-shrink: 0; }
-    #song-info { flex: 1; font-size: 0.9rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-
+    body { 
+        height: 100dvh; overflow: hidden; background: var(--bg); 
+        color: var(--text); font-family: -apple-system, system-ui, sans-serif; 
+    }
+    #app { display: flex; flex-direction: column; height: 100%; visibility: hidden; }
+    #header { 
+        height: 60px; background: var(--surface); border-bottom: 1px solid var(--border); 
+        display: flex; align-items: center; padding: 0 15px; gap: 10px; flex-shrink: 0; 
+    }
     #main { flex: 1; display: flex; overflow: hidden; position: relative; }
-    #sidebar { width: 230px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
-    .sidebar-section { padding: 12px 15px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
-    #track-list { padding: 5px; }
-    .track-item { padding: 8px 10px; margin: 2px 5px; border-radius: 4px; font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
-    .track-item:hover { background: rgba(255,255,255,0.05); }
-
-    /* The Score Viewport */
-    #viewport { flex: 1; overflow-y: auto; background: #fff; position: relative; }
-    #at-element { width: 100%; }
-
-    #footer { height: 70px; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 15px; flex-shrink: 0; }
-    
-    .btn { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
-    .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
-    .icon-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
-
-    #prog-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 3px; cursor: pointer; position: relative; }
-    #prog-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent); width: 0%; border-radius: 3px; }
-
-    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; background: var(--bg); text-align: center; padding: 20px; }
+    #viewport { flex: 1; overflow-y: auto; background: #fff; position: relative; -webkit-overflow-scrolling: touch; }
+    #at-element { width: 100%; min-height: 500px; }
+    #footer { 
+        height: 75px; background: var(--surface); border-top: 1px solid var(--border); 
+        display: flex; align-items: center; padding: 0 15px; gap: 12px; flex-shrink: 0; 
+    }
+    .btn { 
+        background: var(--accent); color: white; border: none; padding: 10px 18px; 
+        border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem;
+    }
+    #prog-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 3px; position: relative; }
+    #prog-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent); width: 0%; border-radius: 3px; transition: width 0.1s linear; }
+    .overlay { 
+        position: absolute; inset: 0; display: flex; flex-direction: column; 
+        align-items: center; justify-content: center; z-index: 2000; 
+        background: var(--bg); text-align: center; padding: 30px; 
+    }
     .hidden { display: none !important; }
-    
-    .spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+    .spinner { 
+        width: 35px; height: 35px; border: 3px solid var(--border); 
+        border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; 
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 
-<div id="unlock-screen" class="overlay">
-    <div style="font-size: 3rem; margin-bottom: 1rem;">🎸</div>
-    <h2 style="margin-bottom: 10px;">Music Notation Player</h2>
-    <p style="color: var(--muted); margin-bottom: 25px; max-width: 300px;">Safari requires a manual gesture to enable the audio engine for embedded GP8 tracks.</p>
-    <button class="btn primary" id="btn-unlock">Enable Audio & Start</button>
+<div id="startup-screen" class="overlay">
+    <div style="font-size: 3.5rem; margin-bottom: 1rem;">🎸</div>
+    <h2 style="margin-bottom: 8px;">AlphaTab Player</h2>
+    <p id="startup-status" style="color: var(--muted); margin-bottom: 25px; font-size: 0.95rem;">
+        Safari requires a tap to load the audio engine.
+    </p>
+    <button class="btn" id="btn-start">Start Player</button>
 </div>
 
-<div id="app" class="hidden">
-  <div id="header">
-    <div id="logo"><strong>Alpha</strong>Tab</div>
-    <div id="song-info">Ready to load...</div>
-    <button class="btn primary" onclick="document.getElementById('file-input').click()">Open File</button>
-    <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
-  </div>
+<div id="app">
+    <div id="header">
+        <div style="font-weight: 800; color: var(--accent); margin-right: 10px;">AlphaTab</div>
+        <div id="song-info" style="flex:1; font-size: 0.85rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            No file loaded
+        </div>
+        <button class="btn" style="padding: 7px 12px; font-size: 0.8rem;" onclick="document.getElementById('file-input').click()">Open</button>
+        <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
+    </div>
 
-  <div id="main">
-    <div id="sidebar">
-      <div class="sidebar-section">Instruments</div>
-      <div id="track-list"></div>
+    <div id="main">
+        <div id="viewport">
+            <div id="load-layer" class="overlay hidden" style="background: rgba(15,23,42,0.6);"><div class="spinner"></div></div>
+            <div id="at-element"></div>
+        </div>
     </div>
-    <div id="viewport">
-      <div id="load-overlay" class="overlay hidden" style="background: rgba(15,23,42,0.7)"><div class="spinner"></div></div>
-      <div id="at-element"></div>
-    </div>
-  </div>
 
-  <div id="footer">
-    <button class="btn icon-btn" id="btn-play">▶</button>
-    <div id="time" style="font-family: monospace; font-size: 0.85rem; min-width: 90px;">0:00 / 0:00</div>
-    <div id="prog-wrap"><div id="prog-fill"></div></div>
-    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--muted);">
-        Vol <input type="range" id="vol-control" value="80" style="width: 70px; accent-color: var(--accent);" />
+    <div id="footer">
+        <button class="btn" id="btn-play" style="width: 45px; padding: 0;">▶</button>
+        <div id="time" style="font-family: monospace; font-size: 0.8rem; min-width: 85px;">0:00/0:00</div>
+        <div id="prog-wrap"><div id="prog-fill"></div></div>
+        <input type="range" id="vol-control" value="80" style="width: 60px; accent-color: var(--accent);" />
     </div>
-  </div>
 </div>
 
 <script>
-  let api = null;
-  const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
-
-  // 1. SAFARI ACTIVATION
-  document.getElementById('btn-unlock').addEventListener('click', function() {
-    this.innerText = "Initializing...";
+    let api = null;
+    const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     
-    // Initialize AlphaTab 1.8 API
-    const element = document.getElementById('at-element');
-    api = new alphaTab.AlphaTabApi(element, {
-      core: {
-        fontDirectory: CDN + 'font/'
-      },
-      player: {
-        enablePlayer: true,
-        soundFont: CDN + 'soundfont/sonivox.sf2'
-      },
-      display: {
-        layoutMode: 0 // Page layout
-      }
-    });
+    const startBtn = document.getElementById('btn-start');
+    const statusText = document.getElementById('startup-status');
 
-    // Handle initialization completion
-    api.playerReady.on(() => {
-        // Force-resume WebAudio context inside this click handler
-        const ctx = api.player?.synth?.audioContext;
-        if (ctx && ctx.state !== 'running') {
-            ctx.resume().catch(err => console.error("Context Resume Failed", err));
-        }
+    startBtn.addEventListener('click', function() {
+        // UI Feedback
+        startBtn.style.display = 'none';
+        statusText.innerText = "Downloading SoundFont (30MB)... Please wait.";
         
-        document.getElementById('unlock-screen').classList.add('hidden');
-        document.getElementById('app').classList.remove('hidden');
-        setupAppLogic();
-    });
-    
-    // Safety timeout if AlphaTab fails to load
-    setTimeout(() => {
-        if(document.getElementById('app').classList.contains('hidden')) {
-            alert("AlphaTab failed to initialize. Please check your internet connection.");
-            location.reload();
-        }
-    }, 5000);
-  });
-
-  function setupAppLogic() {
-    const fileInput = document.getElementById('file-input');
-    const btnPlay = document.getElementById('btn-play');
-
-    fileInput.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      const reader = new FileReader();
-      reader.onload = (args) => api.load(args.target.result);
-      reader.readAsArrayBuffer(file);
-    });
-
-    // 2. THE CRITICAL PLAYBACK TRIGGER
-    btnPlay.addEventListener('click', () => {
-      // Re-prime the AudioContext (Standard Safari requirement)
-      if (api.player?.synth?.audioContext?.state !== 'running') {
-        api.player.synth.audioContext.resume();
-      }
-
-      // MP3 / Backing Track Specific Primer
-      // For GP8, AlphaTab creates a .backingTrackAudio property
-      if (api.player.backingTrackAudio) {
-        const bt = api.player.backingTrackAudio;
-        // Playing immediately inside the click event satisfies Safari
-        bt.play().then(() => {
-          // It worked, AlphaTab will now keep it in sync
-        }).catch(err => {
-          console.warn("Safari blocked the backing track. Gesture might be lost.", err);
+        // 1. Initialize API immediately on click
+        const element = document.getElementById('at-element');
+        api = new alphaTab.AlphaTabApi(element, {
+            core: { fontDirectory: CDN + 'font/' },
+            player: {
+                enablePlayer: true,
+                soundFont: CDN + 'soundfont/sonivox.sf2'
+            },
+            display: { layoutMode: 0 }
         });
-      }
 
-      api.playPause();
+        // 2. Handle Player Readiness
+        api.playerReady.on(() => {
+            console.log("Player Ready");
+            
+            // Critical for Safari: Resume Context inside this same click thread
+            const ctx = api.player?.synth?.audioContext;
+            if (ctx && ctx.state !== 'running') {
+                ctx.resume();
+            }
+
+            // Reveal the App
+            document.getElementById('startup-screen').classList.add('hidden');
+            document.getElementById('app').style.visibility = 'visible';
+            setupInteraction();
+        });
     });
 
-    api.scoreLoaded.on(score => {
-      document.getElementById('song-info').innerHTML = `<strong>${score.title || 'Untitled'}</strong> - ${score.artist || 'Unknown'}`;
-      
-      // Update Tracks Sidebar
-      const trackList = document.getElementById('track-list');
-      trackList.innerHTML = '';
-      score.tracks.forEach(t => {
-        const div = document.createElement('div');
-        div.className = 'track-item';
-        div.innerText = t.name;
-        trackList.appendChild(div);
-      });
-    });
+    function setupInteraction() {
+        const fileInput = document.getElementById('file-input');
+        const btnPlay = document.getElementById('btn-play');
 
-    api.playerStateChanged.on(e => {
-      btnPlay.innerText = e.state === 1 ? '⏸' : '▶';
-    });
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (args) => api.load(args.target.result);
+            reader.readAsArrayBuffer(file);
+        });
 
-    api.playerPositionChanged.on(e => {
-      const current = e.currentTime / 1000;
-      const total = e.endTime / 1000;
-      const fmt = (s) => Math.floor(s/60) + ":" + (Math.floor(s%60)).toString().padStart(2, '0');
-      
-      document.getElementById('time').innerText = `${fmt(current)} / ${fmt(total)}`;
-      document.getElementById('prog-fill').style.width = (e.currentTime / e.endTime * 100) + '%';
-    });
+        btnPlay.addEventListener('click', () => {
+            // Safari Re-priming
+            if (api.player?.synth?.audioContext?.state !== 'running') {
+                api.player.synth.audioContext.resume();
+            }
+            
+            // Embedded MP3 (GP8) Prime
+            if (api.player.backingTrackAudio) {
+                const bt = api.player.backingTrackAudio;
+                bt.play().then(() => { if(!api.player.state === 1) bt.pause(); }).catch(() => {});
+            }
 
-    api.renderStarted.on(() => document.getElementById('load-overlay').classList.remove('hidden'));
-    api.postRenderFinished.on(() => document.getElementById('load-overlay').classList.add('hidden'));
+            api.playPause();
+        });
 
-    document.getElementById('vol-control').addEventListener('input', e => {
-      api.masterVolume = e.target.value / 100;
-    });
-  }
+        api.scoreLoaded.on(score => {
+            document.getElementById('song-info').innerHTML = `<strong>${score.title || 'Untitled'}</strong>`;
+        });
+
+        api.playerStateChanged.on(e => {
+            btnPlay.innerText = (e.state === 1) ? '⏸' : '▶';
+        });
+
+        api.playerPositionChanged.on(e => {
+            const current = e.currentTime / 1000;
+            const total = e.endTime / 1000;
+            const fmt = (s) => Math.floor(s/60) + ":" + (Math.floor(s%60)).toString().padStart(2, '0');
+            document.getElementById('time').innerText = `${fmt(current)}/${fmt(total)}`;
+            document.getElementById('prog-fill').style.width = (e.currentTime / e.endTime * 100) + '%';
+        });
+
+        api.renderStarted.on(() => document.getElementById('load-layer').classList.remove('hidden'));
+        api.postRenderFinished.on(() => document.getElementById('load-layer').classList.add('hidden'));
+
+        document.getElementById('vol-control').addEventListener('input', e => {
+            api.masterVolume = e.target.value / 100;
+        });
+    }
 </script>
 </body>
 </html>
