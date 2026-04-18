@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Oscillator Unlock</title>
+    <title>AlphaTab Safari - Synth Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -16,7 +16,7 @@
         #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
         #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
         
-        #debug-container { height: 100px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
+        #debug-container { height: 120px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
         #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
         
         .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
@@ -73,12 +73,13 @@
         
         try {
             api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
-                core: { fontDirectory: CDN + 'font/', engine: 'svg' },
+                core: { fontDirectory: CDN + 'font/' },
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
-                    enableBackingTracks: true,   
-                    soundFont: CDN + 'soundfont/mscore.sf2' 
+                    enableBackingTracks: true,
+                    // THE FIX: Official sonivox soundfont URL
+                    soundFont: CDN + 'soundfont/sonivox.sf2' 
                 }
             });
 
@@ -92,6 +93,20 @@
     function setupControls() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
+
+        // --- NEW: Track Soundfont Download Progress ---
+        api.soundFontLoad.on((e) => {
+            log(`Downloading Soundfont: ${Math.round((e.loaded / e.total) * 100)}%`);
+        });
+        
+        api.soundFontLoaded.on(() => {
+            log("SUCCESS: Soundfont completely loaded into memory!");
+        });
+
+        // Track API Errors
+        api.error.on((e) => {
+            log("API ERROR: " + e.message);
+        });
 
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -118,41 +133,11 @@
 
         btnPlay.addEventListener('click', () => {
             log("Play Button Clicked");
+            log("isReadyForPlayback: " + api.isReadyForPlayback);
             
             try {
-                const actx = api.player?.synth?.audioContext;
-                
-                if (actx) {
-                    log("Context State Before: " + actx.state);
-                    
-                    // The Silent Oscillator Trick
-                    if (actx.state !== 'running') {
-                        log("Attempting to force-start oscillator...");
-                        const osc = actx.createOscillator();
-                        osc.type = 'sine';
-                        osc.frequency.value = 440; // 440Hz
-                        
-                        const gain = actx.createGain();
-                        gain.gain.value = 0; // MUTED (Silent)
-                        
-                        osc.connect(gain);
-                        gain.connect(actx.destination);
-                        
-                        osc.start(0);
-                        osc.stop(0.01); // Play for 1 millisecond
-                        
-                        // Fire the resume command
-                        actx.resume().then(() => {
-                            log("Context State After Resume: " + actx.state);
-                        });
-                    }
-                } else {
-                    log("Warning: No internal AudioContext found.");
-                }
-
-                log("Calling api.playPause()...");
+                // Let AlphaTab handle the unlock natively this time
                 api.playPause();
-
             } catch (err) {
                 log("PLAY ERROR: " + err.message);
             }
