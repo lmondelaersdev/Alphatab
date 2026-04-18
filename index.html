@@ -152,55 +152,49 @@
   </main>
 
   <script>
-    const el = document.querySelector('#alphatab');
+    const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.3.1/dist/';
+    const el  = document.querySelector('#alphatab');
 
     const api = new alphaTab.AlphaTabApi(el, {
       core: {
-        tex: true,
-        fontDirectory: 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.3.1/dist/font/'
+        fontDirectory: CDN + 'font/'
       },
       display: {
-        staveProfile: 'tab',
-        scale: 1.0
+        staveProfile: 2,  // 2 = Tab only
+        scale: 1.1
       },
       player: {
         enablePlayer: true,
         enableCursor: true,
-        soundFont: 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.3.1/dist/soundfont/sonivox.sf2',
-        scrollMode: alphaTab.ScrollMode.Continuous
+        soundFont: CDN + 'soundfont/sonivox.sf2'
       }
     });
 
-    // AlphaTex score: a simple 12-bar blues in E
+    // AlphaTex: 12-bar blues in E (strings are 1-based, 1=high-e … 6=low-E)
     const tex = `
 \\title "12-Bar Blues in E"
-\\subtitle "AlphaTab Demo"
-\\tempo 120
-\\instrument 25
+\\tempo 100
 .
-\\tuning E4 B3 G3 D3 A2 E2
-\\staff{score}
-\\capo 0
-(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
-(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
-(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
-(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
-(2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 |
-(2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 |
-(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
-(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
-(2.3 2.2).4 4.2.8 (2.3 2.2).4 4.2.8 (2.3 2.2).4 4.2.8 (2.3 2.2).4 4.2.8 |
-(2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 |
-(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
-(2.3 2.2).4 4.2.8 (2.4 2.3).4 4.3.8 0.5.2 r.4
+0.6.4 2.6.4 3.6.8 2.6.8 0.6.4 2.6.4 |
+0.6.4 2.6.4 3.6.8 2.6.8 0.6.4 2.6.4 |
+0.6.4 2.6.4 3.6.8 2.6.8 0.6.4 2.6.4 |
+0.6.4 2.6.4 3.6.8 2.6.8 0.6.4 2.6.4 |
+0.5.4 2.5.4 3.5.8 2.5.8 0.5.4 2.5.4 |
+0.5.4 2.5.4 3.5.8 2.5.8 0.5.4 2.5.4 |
+0.6.4 2.6.4 3.6.8 2.6.8 0.6.4 2.6.4 |
+0.6.4 2.6.4 3.6.8 2.6.8 0.6.4 2.6.4 |
+2.4.4 4.4.4 5.4.8 4.4.8 2.4.4 4.4.4 |
+0.5.4 2.5.4 3.5.8 2.5.8 0.5.4 2.5.4 |
+0.6.4 2.6.4 3.6.8 2.6.8 0.6.4 2.6.4 |
+2.4.4 0.5.4 2.5.4 0.6.2.
 `;
 
     api.tex(tex);
 
-    const btnPlay = document.getElementById('btn-play');
-    const btnStop = document.getElementById('btn-stop');
+    const btnPlay   = document.getElementById('btn-play');
+    const btnStop   = document.getElementById('btn-stop');
     const speedSlider = document.getElementById('speed');
-    const speedLabel = document.getElementById('speed-label');
+    const speedLabel  = document.getElementById('speed-label');
 
     btnPlay.addEventListener('click', () => api.playPause());
     btnStop.addEventListener('click', () => api.stop());
@@ -211,10 +205,9 @@
       api.playbackSpeed = v / 100;
     });
 
+    // PlayerState: 0 = Paused, 1 = Playing
     api.playerStateChanged.on(e => {
-      btnPlay.textContent = e.state === alphaTab.synth.PlayerState.Playing
-        ? '⏸ Pause'
-        : '▶ Play';
+      btnPlay.textContent = e.state === 1 ? '\u23F8 Pause' : '\u25B6 Play';
     });
   </script>
 </body>
