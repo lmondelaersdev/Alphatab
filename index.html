@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - The Perfect WAV Hack</title>
+    <title>AlphaTab Safari - The Bait & Switch</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -67,10 +67,11 @@
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     let api = null;
     let webAudioCtx = null;
+    let isHijacked = false;
 
     // --- RAW AUDIO TO WAV CONVERTER ---
     function audioBufferToWavBlob(buffer) {
-        log("Converting decoded audio to WAV format...");
+        log("Encoding raw PCM to WAV...");
         const numOfChan = buffer.numberOfChannels;
         const length = buffer.length * numOfChan * 2 + 44;
         const out = new ArrayBuffer(length);
@@ -81,19 +82,11 @@
         const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
         const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
 
-        setUint32(0x46464952); // "RIFF"
-        setUint32(length - 8); // file length - 8
-        setUint32(0x45564157); // "WAVE"
-        setUint32(0x20746d66); // "fmt " chunk
-        setUint32(16); // length = 16
-        setUint16(1); // PCM
-        setUint16(numOfChan);
-        setUint32(buffer.sampleRate);
-        setUint32(buffer.sampleRate * 2 * numOfChan); // byte rate
-        setUint16(numOfChan * 2); // block-align
-        setUint16(16); // 16-bit
-        setUint32(0x61746164); // "data" chunk
-        setUint32(length - pos - 4); // chunk length
+        setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
+        setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+        setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan); 
+        setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); 
+        setUint32(length - pos - 4); 
 
         for(let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
 
@@ -101,12 +94,10 @@
             for(let i = 0; i < numOfChan; i++) {
                 sample = Math.max(-1, Math.min(1, channels[i][offset])); 
                 sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; 
-                view.setInt16(pos, sample, true); 
-                pos += 2;
+                view.setInt16(pos, sample, true); pos += 2;
             }
             offset++;
         }
-        log("WAV conversion complete!");
         return new Blob([out], {type: "audio/wav"});
     }
 
@@ -123,8 +114,7 @@
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
-                    // IMPORTANT: Start False so we can steal the audio first!
-                    enableBackingTracks: false, 
+                    enableBackingTracks: true, // We leave this ON so AlphaTab extracts the blob
                     soundFont: CDN + 'soundfont/sonivox.sf2' 
                 }
             });
@@ -146,45 +136,51 @@
             document.getElementById('song-info').innerText = file.name;
             btnPlay.disabled = true;
             btnPlay.style.background = "#475569";
+            isHijacked = false; // Reset for new file
             
+            log("Loading file...");
             const reader = new FileReader();
             reader.onload = (args) => { api.load(args.target.result); };
             reader.readAsArrayBuffer(file);
         });
 
-        // --- THE HEIST: INTERCEPT THE AUDIO ---
-        api.scoreLoaded.on((score) => {
-            if (score.audioTracks && score.audioTracks.length > 0) {
-                log("Embedded audio detected. Decoding via WebAudio...");
-                const data = score.audioTracks[0].data;
-                const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-
-                webAudioCtx.decodeAudioData(arrayBuffer, 
-                    function(buffer) {
-                        const wavBlob = audioBufferToWavBlob(buffer);
+        // --- THE BAIT AND SWITCH ---
+        api.playerReady.on(() => {
+            // Check if AlphaTab created a backing track element with a Blob URL
+            if (!isHijacked && api.player && api.player.backingTrackAudio && api.player.backingTrackAudio.src) {
+                isHijacked = true;
+                log("Audio Engine Ready! Hijacking internal audio stream...");
+                
+                const originalUrl = api.player.backingTrackAudio.src;
+                
+                // Fetch the Blob AlphaTab created
+                fetch(originalUrl)
+                    .then(res => res.arrayBuffer())
+                    .then(buffer => {
+                        log("Decoding Safari-Hostile OGG format...");
+                        return webAudioCtx.decodeAudioData(buffer);
+                    })
+                    .then(decodedData => {
+                        // Convert to WAV
+                        const wavBlob = audioBufferToWavBlob(decodedData);
                         const wavUrl = URL.createObjectURL(wavBlob);
                         
-                        log("Attaching Safari-friendly WAV to AlphaTab...");
+                        log("Replacing with Safari-Friendly WAV...");
+                        // Swap it directly in the HTML element
+                        api.player.backingTrackAudio.src = wavUrl;
+                        api.player.backingTrackAudio.load(); // Force Safari to recognize the new file
                         
-                        // Hand the WAV to AlphaTab and dynamically turn Backing Tracks ON
-                        api.settings.player.backingTrack = wavUrl;
-                        api.settings.player.enableBackingTracks = true; 
-                        api.updateSettings();
-                        
+                        log("SUCCESS: Hijack complete. Sync engine preserved!");
                         btnPlay.disabled = false;
                         btnPlay.style.background = "var(--accent)";
-                        log("Ready to play with native sync!");
-                    },
-                    function(err) {
-                        log("DECODE ERROR: Safari failed to read the OGG file.");
-                    }
-                );
-            } else {
-                log("No audio track found in file.");
-                // Turn Backing Tracks on anyway just in case it uses MIDI fallback
-                api.settings.player.enableBackingTracks = true;
-                api.updateSettings();
-                
+                    })
+                    .catch(err => {
+                        log("Hijack Error: " + err.message);
+                        btnPlay.disabled = false;
+                        btnPlay.style.background = "var(--accent)";
+                    });
+            } else if (!isHijacked) {
+                log("Audio Engine Ready! No internal audio found.");
                 btnPlay.disabled = false;
                 btnPlay.style.background = "var(--accent)";
             }
