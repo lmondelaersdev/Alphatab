@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - The Final Sync</title>
+    <title>AlphaTab Safari - The Final Sync (Fixed Array)</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -149,8 +149,8 @@
             const reader = new FileReader();
             reader.onload = (args) => { 
                 globalFileBuffer = args.target.result;
-                // Use a Uint8Array clone so AlphaTab doesn't destroy the buffer
-                api.load(new Uint8Array(globalFileBuffer)); 
+                // BUG FIX: Use .slice(0) to make a clean copy instead of Uint8Array
+                api.load(globalFileBuffer.slice(0)); 
             };
             reader.readAsArrayBuffer(file);
         });
@@ -197,7 +197,8 @@
                             api.settings.player.backingTrack = wavUrl;
                             
                             syncState = 3; // UNLOCK STATE FOR PASS 2
-                            api.load(new Uint8Array(globalFileBuffer));
+                            // BUG FIX: Use .slice(0) again
+                            api.load(globalFileBuffer.slice(0));
                         })
                         .catch(err => { 
                             log("Decode Error: " + err.message); 
