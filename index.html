@@ -15,7 +15,7 @@
         #main { flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #fff; position: relative; }
         #at-element { width: 100%; }
         #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
-        #debug-container { height: 140px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; }
+        #debug-container { height: 80px; background: #000; padding: 6px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; }
 
 ```
     /* alphaTab playback cursor — no default styles ship with the lib */
@@ -29,6 +29,12 @@
     .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
     .sbtn:active { background: var(--accent); }
     #sync-display { flex: 1; text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; }
+
+    /* Fretboard */
+    #fretboard-container { height: 125px; background: #1a120c; border-top: 1px solid #334155; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; -webkit-overflow-scrolling: touch; position: relative; }
+    #fretboard-container svg { display: block; height: 100%; }
+    .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
+    #fb-bar-label { position: absolute; top: 4px; right: 8px; font-size: 0.65rem; color: var(--accent); font-family: monospace; font-weight: bold; pointer-events: none; z-index: 2; }
     #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
     .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
     .btn:disabled { opacity: 0.5; cursor: wait; }
@@ -82,6 +88,11 @@
     <button class="sbtn" onclick="adjustSync(1000)">+1s</button>
 </div>
 
+<div id="fretboard-container">
+    <span id="fb-bar-label">BAR —</span>
+    <div id="fretboard"></div>
+</div>
+
 <div id="debug-container"><pre id="debug-log">Engine offline.</pre></div>
 
 <script>
@@ -99,6 +110,156 @@
     let handlerWired = false;   // we only attach the IExternalMediaHandler once
     let externalMode = false;   // flips true once a backing track is bound
     let syncOffsetMs = 0;       // manual cursor↔audio drift correction
+    let barNotesMap = null;     // Map<masterBarIndex, Set<"string-fret">>
+    let fbDotMap = new Map();   // Map<"string-fret", SVGCircleElement>
+    let lastPaintedBarIdx = -2;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FRETBOARD VISUALIZATION
+    // ─────────────────────────────────────────────────────────────────────
+    const FB = {
+        strings: 6, frets: 18,
+        fretWidth: 48, stringGap: 13,
+        padTop: 14, padBottom: 18, padLeft: 28, padRight: 16,
+        nutWidth: 7
+    };
+
+    function buildFretboardSVG() {
+        const w = FB.padLeft + FB.nutWidth + FB.frets * FB.fretWidth + FB.padRight;
+        const h = FB.padTop + (FB.strings - 1) * FB.stringGap + FB.padBottom;
+        const boardTop = FB.padTop - 7;
+        const boardBot = FB.padTop + (FB.strings - 1) * FB.stringGap + 7;
+        const stringX0 = FB.padLeft - 6;
+        const stringX1 = w - FB.padRight;
+
+        const parts = [];
+        parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+
+        // Wood
+        parts.push(`<rect x="${FB.padLeft}" y="${boardTop}" width="${FB.nutWidth + FB.frets * FB.fretWidth}" height="${boardBot - boardTop}" fill="#3a2618"/>`);
+        // Nut
+        parts.push(`<rect x="${FB.padLeft}" y="${boardTop}" width="${FB.nutWidth}" height="${boardBot - boardTop}" fill="#e8d8b8"/>`);
+
+        // Frets
+        for (let f = 1; f <= FB.frets; f++) {
+            const x = FB.padLeft + FB.nutWidth + f * FB.fretWidth;
+            parts.push(`<line x1="${x}" y1="${boardTop}" x2="${x}" y2="${boardBot}" stroke="#a89070" stroke-width="1.5"/>`);
+        }
+
+        // Position markers
+        const midY = FB.padTop + ((FB.strings - 1) * FB.stringGap) / 2;
+        for (const fr of [3, 5, 7, 9, 15, 17]) {
+            if (fr > FB.frets) continue;
+            const x = FB.padLeft + FB.nutWidth + (fr - 0.5) * FB.fretWidth;
+            parts.push(`<circle cx="${x}" cy="${midY}" r="3.5" fill="#5a3e28"/>`);
+        }
+        for (const fr of [12]) {
+            if (fr > FB.frets) continue;
+            const x = FB.padLeft + FB.nutWidth + (fr - 0.5) * FB.fretWidth;
+            parts.push(`<circle cx="${x}" cy="${FB.padTop + 1.2 * FB.stringGap}" r="3.5" fill="#5a3e28"/>`);
+            parts.push(`<circle cx="${x}" cy="${FB.padTop + 3.8 * FB.stringGap}" r="3.5" fill="#5a3e28"/>`);
+        }
+
+        // Fret numbers
+        for (let f = 1; f <= FB.frets; f++) {
+            const x = FB.padLeft + FB.nutWidth + (f - 0.5) * FB.fretWidth;
+            parts.push(`<text x="${x}" y="${boardBot + 11}" text-anchor="middle" font-size="9" fill="#7a6450" font-family="monospace">${f}</text>`);
+        }
+
+        // Strings (over frets)
+        for (let s = 1; s <= FB.strings; s++) {
+            const y = FB.padTop + (s - 1) * FB.stringGap;
+            const thickness = 0.8 + (s - 1) * 0.25;
+            parts.push(`<line x1="${stringX0}" y1="${y}" x2="${stringX1}" y2="${y}" stroke="#d8d8d8" stroke-width="${thickness}"/>`);
+        }
+
+        // Dots — one per string×fret intersection (incl. open at fret 0)
+        for (let s = 1; s <= FB.strings; s++) {
+            const y = FB.padTop + (s - 1) * FB.stringGap;
+            // Open string (left of nut)
+            parts.push(`<circle class="fb-dot" id="fb-dot-${s}-0" cx="${FB.padLeft - 14}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
+            for (let f = 1; f <= FB.frets; f++) {
+                const x = FB.padLeft + FB.nutWidth + (f - 0.5) * FB.fretWidth;
+                parts.push(`<circle class="fb-dot" id="fb-dot-${s}-${f}" cx="${x}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
+            }
+        }
+
+        parts.push('</svg>');
+        return parts.join('');
+    }
+
+    function initFretboard() {
+        document.getElementById('fretboard').innerHTML = buildFretboardSVG();
+        fbDotMap.clear();
+        for (let s = 1; s <= FB.strings; s++) {
+            for (let f = 0; f <= FB.frets; f++) {
+                const el = document.getElementById(`fb-dot-${s}-${f}`);
+                if (el) fbDotMap.set(`${s}-${f}`, el);
+            }
+        }
+    }
+
+    function buildBarNotesMap(score) {
+        const map = new Map();
+        for (const track of score.tracks || []) {
+            for (const staff of track.staves || []) {
+                for (const bar of staff.bars || []) {
+                    const idx = bar.masterBar?.index ?? bar.index ?? -1;
+                    if (idx < 0) continue;
+                    if (!map.has(idx)) map.set(idx, new Set());
+                    const set = map.get(idx);
+                    for (const voice of bar.voices || []) {
+                        for (const beat of voice.beats || []) {
+                            for (const note of beat.notes || []) {
+                                const s = note.string, f = note.fret;
+                                if (s > 0 && s <= FB.strings && f >= 0 && f <= FB.frets) {
+                                    set.add(`${s}-${f}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return map;
+    }
+
+    function repaintFretboard(barIdx, activeNotes) {
+        // Clear all
+        fbDotMap.forEach(el => {
+            el.setAttribute('fill', 'transparent');
+            el.setAttribute('stroke', 'transparent');
+            el.setAttribute('r', '5.5');
+        });
+        // White: all notes in this bar
+        const barSet = barNotesMap?.get(barIdx);
+        if (barSet) {
+            barSet.forEach(key => {
+                const el = fbDotMap.get(key);
+                if (el) {
+                    el.setAttribute('fill', 'rgba(255,255,255,0.85)');
+                    el.setAttribute('stroke', '#1a120c');
+                }
+            });
+        }
+        // Red: active beat
+        if (activeNotes) {
+            for (const note of activeNotes) {
+                const key = `${note.string}-${note.fret}`;
+                const el = fbDotMap.get(key);
+                if (el) {
+                    el.setAttribute('fill', 'var(--accent)');
+                    el.setAttribute('fill', '#e94560');
+                    el.setAttribute('stroke', '#fff');
+                    el.setAttribute('r', '7.5');
+                }
+            }
+        }
+        // Bar label
+        if (barIdx >= 0) {
+            document.getElementById('fb-bar-label').textContent = 'BAR ' + (barIdx + 1);
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // SYNC OFFSET — adjustable at runtime
@@ -161,6 +322,7 @@
         });
 
         wireApiEvents();
+        initFretboard();
 
         document.getElementById('startup-screen').style.display = 'none';
         document.getElementById('app').classList.add('ready');
@@ -174,6 +336,12 @@
 
         api.scoreLoaded.on(async (score) => {
             log("Score loaded: " + (score.title || "(untitled)"));
+
+            // Build fretboard bar-notes map and paint bar 1 immediately
+            barNotesMap = buildBarNotesMap(score);
+            lastPaintedBarIdx = -2;
+            repaintFretboard(0, null);
+            log("Fretboard map: " + barNotesMap.size + " bars indexed.");
 
             // alphaTab 1.8: backing track lives on score.backingTrack OR
             // score.audioTracks[0] depending on file. Try both.
@@ -247,6 +415,16 @@
             const fmt = (s) => isNaN(s) ? "0:00" : Math.floor(s/60) + ":" + Math.floor(s%60).toString().padStart(2, '0');
             document.getElementById('time').textContent = `${fmt(cur)} / ${fmt(tot)}`;
             document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
+        });
+
+        // Drive the fretboard highlight on every beat that's actually played
+        api.playedBeatChanged.on((beat) => {
+            // Some alphaTab versions pass the beat directly, others wrap it.
+            const b = beat?.beat || beat;
+            if (!b) return;
+            const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
+            repaintFretboard(barIdx, b.notes || []);
+            lastPaintedBarIdx = barIdx;
         });
 
         api.error.on((err) => log("alphaTab error: " + (err?.message || err)));
