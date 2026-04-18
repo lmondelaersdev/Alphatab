@@ -9,12 +9,13 @@
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
         body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
-        #app { display: flex; flex-direction: column; flex: 1; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
+        #app { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
         #app.ready { opacity: 1; pointer-events: all; }
         #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid #334155; flex-shrink: 0; gap: 10px; }
-        #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
+        #main { flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #fff; position: relative; }
+        #at-element { width: 100%; }
         #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
-        #debug-container { height: 140px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
+        #debug-container { height: 140px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; }
         #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
         .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn:disabled { opacity: 0.5; cursor: wait; }
