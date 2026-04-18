@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari — External Media Engine</title>
+    <title>AlphaTab Safari — Theory Engine</title>
+    
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
+    
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
         body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
@@ -17,44 +19,45 @@
         #footer { height: 56px; background: var(--surface); display: flex; align-items: center; padding: 0 12px; gap: 12px; flex-shrink: 0; }
         #debug-container { height: 80px; background: #000; padding: 6px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; display: none; }
 
-```
-    /* Toggle pills in header */
-    .tgl { background: #334155; color: #94a3b8; border: none; width: 32px; height: 32px; border-radius: 6px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
-    .tgl.on { background: var(--accent); color: white; }
+        /* Toggle pills in header */
+        .tgl { background: #334155; color: #94a3b8; border: none; width: 32px; height: 32px; border-radius: 6px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .tgl.on { background: var(--accent); color: white; }
 
-    /* alphaTab playback cursor — no default styles ship with the lib */
-    .at-cursor-bar  { background: rgba(255, 242, 0, 0.25); }
-    .at-cursor-beat { background: var(--accent); width: 3px; }
-    .at-selection div { background: rgba(233, 69, 96, 0.1); }
-    .at-highlight * { fill: var(--accent) !important; stroke: var(--accent) !important; }
+        /* alphaTab playback cursor */
+        .at-cursor-bar  { background: rgba(255, 242, 0, 0.25); }
+        .at-cursor-beat { background: var(--accent); width: 3px; }
+        .at-selection div { background: rgba(233, 69, 96, 0.1); }
+        .at-highlight * { fill: var(--accent) !important; stroke: var(--accent) !important; }
 
-    /* Sync offset row */
-    #sync-row { height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; }
-    .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
-    .sbtn:active { background: var(--accent); }
-    .sbtn.on { background: var(--accent); }
-    #sync-display { flex: 1; text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; }
+        /* Sync offset row */
+        #sync-row { height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; }
+        .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
+        .sbtn:active { background: var(--accent); }
+        .sbtn.on { background: var(--accent); }
+        #sync-display { flex: 1; text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; }
 
-    /* Practice row */
-    #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
-    #practice-row .sep { color: #475569; }
-    #practice-row select { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; max-width: 110px; }
-    #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; }
+        /* Practice row */
+        #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
+        #practice-row .sep { color: #475569; }
+        #practice-row select { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; max-width: 110px; }
+        #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; }
 
-    /* Fretboard */
-    #fretboard-container { height: 125px; background: #1a120c; border-top: 1px solid #334155; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; -webkit-overflow-scrolling: touch; position: relative; }
-    #fretboard-container svg { display: block; height: 100%; }
-    .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
-    #fb-bar-label { position: absolute; top: 4px; right: 8px; font-size: 0.65rem; color: var(--accent); font-family: monospace; font-weight: bold; pointer-events: none; z-index: 2; }
-    #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
-    .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-    .btn:disabled { opacity: 0.5; cursor: wait; }
-    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); }
-    .pill { font-size: 0.7rem; padding: 3px 8px; border-radius: 999px; background: #334155; color: #94a3b8; }
-    .pill.live { background: #14532d; color: #86efac; }
-</style>
-```
-
+        /* Fretboard */
+        #fretboard-container { height: 125px; background: #1a120c; border-top: 1px solid #334155; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; -webkit-overflow-scrolling: touch; position: relative; }
+        #fretboard-container svg { display: block; height: 100%; }
+        .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
+        .fb-text { font-size: 6.5px; font-family: sans-serif; font-weight: bold; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; opacity: 0; transition: opacity 90ms linear; }
+        
+        #fb-bar-label { position: absolute; top: 4px; right: 8px; font-size: 0.65rem; color: var(--accent); font-family: monospace; font-weight: bold; pointer-events: none; z-index: 2; }
+        #fb-chord-label { position: absolute; top: 4px; left: 8px; font-size: 0.8rem; color: #3b82f6; font-family: sans-serif; font-weight: 800; pointer-events: none; z-index: 2; }
+        
+        #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn:disabled { opacity: 0.5; cursor: wait; }
+        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); }
+        .pill { font-size: 0.7rem; padding: 3px 8px; border-radius: 999px; background: #334155; color: #94a3b8; }
+        .pill.live { background: #14532d; color: #86efac; }
+    </style>
 </head>
 <body>
 
@@ -73,7 +76,6 @@
         <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-container', this)">🎸</button>
         <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
         <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()">📁</button>
-        <!-- No accept filter: iOS has no UTI for .gp and will grey everything out -->
         <input type="file" id="file-input" style="display:none" />
     </div>
     <div id="main"><div id="at-element"></div></div>
@@ -87,8 +89,6 @@
         </div>
     </div>
 </div>
-
-<!-- The hidden HTMLAudioElement that *actually* plays the WAV in Safari -->
 
 <audio id="external-audio" preload="auto" playsinline style="display:none"></audio>
 
@@ -105,6 +105,8 @@
     <button class="sbtn" id="btn-countin" title="Count-in before play" onclick="toggleCountIn()">📯</button>
     <button class="sbtn" onclick="adjustZoom(-0.1)">−🔍</button>
     <button class="sbtn" onclick="adjustZoom(0.1)">+🔍</button>
+    <span class="sep">|</span>
+    <button class="sbtn" id="btn-theory" title="Toggle Theory Matrix" onclick="toggleTheory()" style="color:#fbbf24;">🎓 THEORY</button>
 </div>
 
 <div id="sync-row">
@@ -119,6 +121,7 @@
 </div>
 
 <div id="fretboard-container">
+    <span id="fb-chord-label"></span>
     <span id="fb-bar-label">BAR —</span>
     <div id="fretboard"></div>
 </div>
@@ -134,26 +137,33 @@
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
 
     let api, audioCtx;
-    let externalAudio;          // the <audio> tag that plays the WAV
+    let externalAudio;          
     let currentWavUrl = null;
     let positionTimer = 0;
-    let handlerWired = false;   // we only attach the IExternalMediaHandler once
-    let externalMode = false;   // flips true once a backing track is bound
-    let syncOffsetMs = 0;       // manual cursor↔audio drift correction
-    let barNotesMap = null;     // Map<masterBarIndex, Set<"string-fret">>
-    let fbDotMap = new Map();   // Map<"string-fret", SVGCircleElement>
+    let handlerWired = false;   
+    let externalMode = false;   
+    let syncOffsetMs = 0;       
+    let barNotesMap = null;     
+    let fbDotMap = new Map();   
+    let fbTxtMap = new Map();   // New: Map to hold text intervals
     let lastPaintedBarIdx = -2;
+    let lastActiveNotes = null; // New: To allow toggling without waiting for beat
 
-    // Practice state
-    let scoreRef = null;        // last loaded score
-    let currentFileKey = null;  // for localStorage keying
-    let loopStartMs = -1;       // audio time in ms (works in external-media mode)
+    // Practice & Theory state
+    let scoreRef = null;        
+    let currentFileKey = null;  
+    let loopStartMs = -1;       
     let loopEndMs = -1;
     let isLoopOn = false;
     let isCountInOn = false;
     let currentSpeed = 1.0;
     let currentZoom = 1.0;
-    let currentTrackIdx = -1;   // -1 = all
+    let currentTrackIdx = -1;   
+    
+    // Theory Engine State
+    let theoryMode = false;
+    let activeChordName = "";
+    const standardTuningMidi = [64, 59, 55, 50, 45, 40]; // High E to Low E
 
     // ─────────────────────────────────────────────────────────────────────
     // FRETBOARD VISUALIZATION
@@ -207,21 +217,24 @@
             parts.push(`<text x="${x}" y="${boardBot + 11}" text-anchor="middle" font-size="9" fill="#7a6450" font-family="monospace">${f}</text>`);
         }
 
-        // Strings (over frets)
+        // Strings
         for (let s = 1; s <= FB.strings; s++) {
             const y = FB.padTop + (s - 1) * FB.stringGap;
             const thickness = 0.8 + (s - 1) * 0.25;
             parts.push(`<line x1="${stringX0}" y1="${y}" x2="${stringX1}" y2="${y}" stroke="#d8d8d8" stroke-width="${thickness}"/>`);
         }
 
-        // Dots — one per string×fret intersection (incl. open at fret 0)
+        // Dots & Interval Texts
         for (let s = 1; s <= FB.strings; s++) {
             const y = FB.padTop + (s - 1) * FB.stringGap;
-            // Open string (left of nut)
+            // Open string
             parts.push(`<circle class="fb-dot" id="fb-dot-${s}-0" cx="${FB.padLeft - 14}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
+            parts.push(`<text class="fb-text" id="fb-txt-${s}-0" x="${FB.padLeft - 14}" y="${y}"></text>`);
+            
             for (let f = 1; f <= FB.frets; f++) {
                 const x = FB.padLeft + FB.nutWidth + (f - 0.5) * FB.fretWidth;
                 parts.push(`<circle class="fb-dot" id="fb-dot-${s}-${f}" cx="${x}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
+                parts.push(`<text class="fb-text" id="fb-txt-${s}-${f}" x="${x}" y="${y}"></text>`);
             }
         }
 
@@ -232,10 +245,13 @@
     function initFretboard() {
         document.getElementById('fretboard').innerHTML = buildFretboardSVG();
         fbDotMap.clear();
+        fbTxtMap.clear();
         for (let s = 1; s <= FB.strings; s++) {
             for (let f = 0; f <= FB.frets; f++) {
                 const el = document.getElementById(`fb-dot-${s}-${f}`);
+                const txt = document.getElementById(`fb-txt-${s}-${f}`);
                 if (el) fbDotMap.set(`${s}-${f}`, el);
+                if (txt) fbTxtMap.set(`${s}-${f}`, txt);
             }
         }
     }
@@ -265,41 +281,117 @@
         return map;
     }
 
+    // Theory Math Helpers
+    function getIntervalColor(ivl) {
+        if (ivl.startsWith('1')) return 'rgba(239, 68, 68, 0.6)';   // Red
+        if (ivl.startsWith('3')) return 'rgba(245, 158, 11, 0.6)'; // Orange
+        if (ivl.startsWith('5')) return 'rgba(59, 130, 246, 0.6)'; // Blue
+        if (ivl.startsWith('7')) return 'rgba(139, 92, 246, 0.6)'; // Purple
+        return 'rgba(16, 185, 129, 0.6)';                          // Green (Ext)
+    }
+
+    function extractChordFromBeat(beat) {
+        if (!beat || !beat.voice || !beat.voice.beats) return null;
+        let chordName = null;
+        for (const b of beat.voice.beats) {
+            if (b.absolutePlaybackStart > beat.absolutePlaybackStart) break;
+            if (b.chord && b.chord.name) chordName = b.chord.name;
+        }
+        return chordName;
+    }
+
+    function toggleTheory() {
+        theoryMode = !theoryMode;
+        document.getElementById('btn-theory').classList.toggle('on', theoryMode);
+        repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+    }
+    window.toggleTheory = toggleTheory;
+
     function repaintFretboard(barIdx, activeNotes) {
+        lastPaintedBarIdx = barIdx;
+        lastActiveNotes = activeNotes;
+
         // Clear all
         fbDotMap.forEach(el => {
             el.setAttribute('fill', 'transparent');
             el.setAttribute('stroke', 'transparent');
             el.setAttribute('r', '5.5');
         });
-        // White: all notes in this bar
+        fbTxtMap.forEach(el => {
+            el.style.opacity = '0';
+            el.textContent = '';
+        });
+
+        // LAYER 1: THEORY MATRIX (If active and chord exists)
+        if (theoryMode && activeChordName && Tonal) {
+            const chordData = Tonal.Chord.get(activeChordName);
+            if (!chordData.empty) {
+                const chordChromas = chordData.notes.map(n => Tonal.Note.chroma(n));
+                
+                for (let s = 1; s <= FB.strings; s++) {
+                    for (let f = 0; f <= FB.frets; f++) {
+                        const midi = standardTuningMidi[s - 1] + f;
+                        const chroma = midi % 12;
+                        const noteIdx = chordChromas.indexOf(chroma);
+                        
+                        if (noteIdx !== -1) {
+                            const key = `${s}-${f}`;
+                            const dot = fbDotMap.get(key);
+                            const txt = fbTxtMap.get(key);
+                            if (dot && txt) {
+                                const ivl = chordData.intervals[noteIdx];
+                                dot.setAttribute('fill', getIntervalColor(ivl));
+                                dot.setAttribute('r', '6');
+                                txt.textContent = ivl.replace(/M|m|P|d|A/g, ''); // Simplify (e.g. 3m -> 3)
+                                txt.style.opacity = '1';
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // LAYER 2: BAR NOTES (White context dots)
         const barSet = barNotesMap?.get(barIdx);
         if (barSet) {
             barSet.forEach(key => {
                 const el = fbDotMap.get(key);
                 if (el) {
-                    el.setAttribute('fill', 'rgba(255,255,255,0.85)');
-                    el.setAttribute('stroke', '#1a120c');
+                    if (theoryMode && activeChordName) {
+                        // In theory mode, just add a stroke so we don't hide the theory color
+                        el.setAttribute('stroke', 'rgba(255,255,255,0.9)');
+                        el.setAttribute('stroke-width', '1.5');
+                    } else {
+                        // Standard mode
+                        el.setAttribute('fill', 'rgba(255,255,255,0.85)');
+                        el.setAttribute('stroke', '#1a120c');
+                    }
                 }
             });
         }
-        // Red: active beat
+
+        // LAYER 3: ACTIVE NOTES (Action)
         if (activeNotes) {
             for (const note of activeNotes) {
                 const key = `${note.string}-${note.fret}`;
                 const el = fbDotMap.get(key);
+                const txt = fbTxtMap.get(key);
                 if (el) {
-                    el.setAttribute('fill', 'var(--accent)');
-                    el.setAttribute('fill', '#e94560');
+                    el.setAttribute('fill', '#e94560'); // Bright Red for action
                     el.setAttribute('stroke', '#fff');
+                    el.setAttribute('stroke-width', '1.5');
                     el.setAttribute('r', '7.5');
                 }
+                // Hide interval text for currently playing note so it doesn't look cluttered
+                if (txt) txt.style.opacity = '0';
             }
         }
-        // Bar label
+
+        // Labels
         if (barIdx >= 0) {
             document.getElementById('fb-bar-label').textContent = 'BAR ' + (barIdx + 1);
         }
+        document.getElementById('fb-chord-label').textContent = activeChordName || "";
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -309,7 +401,6 @@
         syncOffsetMs += deltaMs;
         const sign = syncOffsetMs > 0 ? '+' : '';
         document.getElementById('sync-display').textContent = sign + syncOffsetMs + ' ms';
-        // Push an immediate position update so the cursor jumps without waiting for next tick
         if (api?.player?.output && externalAudio) {
             api.player.output.updatePosition(
                 ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
@@ -320,7 +411,7 @@
     window.adjustSync = adjustSync;
 
     // ─────────────────────────────────────────────────────────────────────
-    // PANEL TOGGLES — show/hide chrome rows to reclaim screen space
+    // PANEL TOGGLES 
     // ─────────────────────────────────────────────────────────────────────
     function togglePanel(panelId, btn) {
         const panel = document.getElementById(panelId);
@@ -328,13 +419,12 @@
         const showing = panel.style.display !== 'none';
         panel.style.display = showing ? 'none' : '';
         btn.classList.toggle('on', !showing);
-        // Re-render alphaTab so it picks up the new viewport size
         if (api?.render) setTimeout(() => api.render(), 0);
     }
     window.togglePanel = togglePanel;
 
     // ─────────────────────────────────────────────────────────────────────
-    // PRACTICE TOOLS — loop A/B, speed, count-in, zoom, track selector
+    // PRACTICE TOOLS 
     // ─────────────────────────────────────────────────────────────────────
     function setLoopA() {
         if (!externalAudio) return;
@@ -403,16 +493,10 @@
 
     async function startPlayback() {
         if (audioCtx.state !== 'running') audioCtx.resume();
-
-        // If already playing, just toggle pause — no count-in
         if (api?.playerState === 1) { api.playPause(); return; }
-
         if (!isCountInOn) { api.playPause(); return; }
 
-        // Count-in: derive tempo + meter from score
-        const tempo = scoreRef?.masterBars?.[0]?.tempoAutomations?.[0]?.value
-                    || scoreRef?.tempo
-                    || 120;
+        const tempo = scoreRef?.masterBars?.[0]?.tempoAutomations?.[0]?.value || scoreRef?.tempo || 120;
         const beats = scoreRef?.masterBars?.[0]?.timeSignatureNumerator || 4;
         const beatMs = 60000 / tempo / currentSpeed;
 
@@ -444,7 +528,6 @@
         };
     }
 
-    // Sync offset persistence
     function persistSync() {
         if (!currentFileKey) return;
         try { localStorage.setItem('at-sync:' + currentFileKey, String(syncOffsetMs)); } catch(e) {}
@@ -464,38 +547,28 @@
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // PHASE A — BOOT (must happen inside a user gesture for Safari)
+    // PHASE A — BOOT 
     // ─────────────────────────────────────────────────────────────────────
     document.getElementById('btn-initialize').onclick = async function () {
         this.disabled = true;
         log("Boot gesture received.");
 
         externalAudio = document.getElementById('external-audio');
-
-        // Persistent AudioContext — used ONLY for decoding OGG → PCM.
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         await audioCtx.resume();
         log("AudioContext: " + audioCtx.state);
 
-        // Pre-touch the <audio> element inside the gesture so Safari trusts it
-        // when we later swap its src and call .play() from another gesture.
-        // Note: pause() races play() on this 1-frame WAV and "aborts" the
-        // play promise — that's fine, the user-activation grant still sticks.
         externalAudio.src = SILENT_WAV;
         try {
             const p = externalAudio.play();
             externalAudio.pause();
             externalAudio.currentTime = 0;
-            await p.catch(() => {}); // swallow expected AbortError
+            await p.catch(() => {}); 
             log("Audio element activated.");
         } catch (e) {
             log("Audio activation skipped: " + e.message);
         }
 
-        // ── Init alphaTab in EXTERNAL MEDIA mode ─────────────────────────
-        // We do NOT set a soundFont — synth path is unused when a backing
-        // track is bound. (alphaTab still loads it for fallback synth use
-        // on files without an audio track. Comment out if you don't want it.)
         api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
             core: { fontDirectory: CDN + 'font/' },
             player: {
@@ -504,7 +577,6 @@
                 enableUserInteraction: true,
                 soundFont: CDN + 'soundfont/sonivox.sf2',
                 playerMode: alphaTab.PlayerMode.EnabledExternalMedia,
-                // Auto-follow: keep the playback cursor visible as the song progresses
                 scrollMode: alphaTab.ScrollMode.Continuous,
                 scrollElement: document.getElementById('main'),
                 scrollOffsetY: -30,
@@ -522,7 +594,7 @@
     };
 
     // ─────────────────────────────────────────────────────────────────────
-    // PINCH-TO-ZOOM on the tabs container
+    // PINCH-TO-ZOOM 
     // ─────────────────────────────────────────────────────────────────────
     function wirePinchZoom() {
         const main = document.getElementById('main');
@@ -546,7 +618,6 @@
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 const dist = Math.hypot(dx, dy);
                 const next = Math.min(2.0, Math.max(0.5, pinchScale0 * (dist / pinchDist0)));
-                // Don't re-render every frame; CSS transform for live preview
                 main.firstElementChild.style.transformOrigin = '0 0';
                 main.firstElementChild.style.transform = 'scale(' + (next / currentZoom).toFixed(3) + ')';
             }
@@ -572,26 +643,23 @@
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // PHASE B — On every score load: decode OGG → WAV, swap audio src
+    // PHASE B — Score Load
     // ─────────────────────────────────────────────────────────────────────
     function wireApiEvents() {
 
         api.scoreLoaded.on(async (score) => {
             log("Score loaded: " + (score.title || "(untitled)"));
             scoreRef = score;
+            activeChordName = ""; // Reset Theory
+            document.getElementById('fb-chord-label').textContent = "";
 
-            // Populate track selector and reset to "all"
             populateTrackSelect(score);
             currentTrackIdx = -1;
 
-            // Build fretboard bar-notes map and paint bar 1 immediately
             barNotesMap = buildBarNotesMap(score);
             lastPaintedBarIdx = -2;
             repaintFretboard(0, null);
-            log("Fretboard map: " + barNotesMap.size + " bars indexed.");
 
-            // alphaTab 1.8: backing track lives on score.backingTrack OR
-            // score.audioTracks[0] depending on file. Try both.
             const track =
                 score.backingTrack?.rawAudioFile ? { data: score.backingTrack.rawAudioFile }
                 : score.audioTracks?.length ? score.audioTracks[0]
@@ -602,35 +670,25 @@
                 externalMode = false;
                 document.getElementById('mode-pill').classList.remove('live');
                 document.getElementById('mode-pill').textContent = 'SYNTH';
-                // For synth fallback we'd need PlayerMode.EnabledAutomatic.
-                // Keeping ExternalMedia means synth is silent here. Adjust
-                // upstream if you also want synth playback for non-GP8 files.
                 return;
             }
 
             try {
-                log("Decoding OGG (" + track.data.byteLength + " bytes)…");
-                // decodeAudioData consumes the buffer — pass a copy.
-                const oggCopy = track.data.buffer.slice(
-                    track.data.byteOffset,
-                    track.data.byteOffset + track.data.byteLength
-                );
+                log("Decoding OGG...");
+                const oggCopy = track.data.buffer.slice(track.data.byteOffset, track.data.byteOffset + track.data.byteLength);
                 const decoded = await audioCtx.decodeAudioData(oggCopy);
 
-                log("Encoding WAV (" + decoded.duration.toFixed(2) + "s)…");
+                log("Encoding WAV...");
                 const wavBlob = audioBufferToWavBlob(decoded);
 
                 if (currentWavUrl) URL.revokeObjectURL(currentWavUrl);
                 currentWavUrl = URL.createObjectURL(wavBlob);
 
-                // Swap the <audio> source and wait for metadata so duration
-                // is valid before alphaTab queries it via the handler.
                 externalAudio.src = currentWavUrl;
                 await new Promise((res, rej) => {
                     externalAudio.addEventListener('loadedmetadata', res, { once: true });
                     externalAudio.addEventListener('error', () => rej(new Error("audio load error")), { once: true });
                 });
-                log("WAV loaded. Duration: " + externalAudio.duration.toFixed(2) + "s");
 
                 externalMode = true;
                 document.getElementById('mode-pill').classList.add('live');
@@ -643,8 +701,6 @@
         });
 
         api.playerReady.on(() => {
-            log("Player ready.");
-            // Wire the external media handler exactly once.
             if (!handlerWired) {
                 attachExternalMediaHandler();
                 handlerWired = true;
@@ -653,7 +709,6 @@
         });
 
         api.playerStateChanged.on((e) => {
-            // 1 = playing, 0 = paused (alphaTab.synth.PlayerState enum)
             document.getElementById('btn-play').textContent = e.state === 1 ? '⏸' : '▶';
         });
 
@@ -664,28 +719,28 @@
             document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
         });
 
-        // Drive the fretboard highlight on every beat that's actually played
         api.playedBeatChanged.on((beat) => {
-            // Some alphaTab versions pass the beat directly, others wrap it.
             const b = beat?.beat || beat;
             if (!b) return;
             const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
+            
+            // Extract theory chord
+            const newChord = extractChordFromBeat(b);
+            if (newChord) activeChordName = newChord;
+            
             repaintFretboard(barIdx, b.notes || []);
-            lastPaintedBarIdx = barIdx;
         });
 
-        // Tap-to-highlight on tabs: when user taps a beat (paused or playing)
-        // light up the fretboard for that beat. alphaTab itself handles
-        // seeking the cursor; we sync the audio position too.
         api.beatMouseDown.on((beat) => {
             const b = beat?.beat || beat;
             if (!b) return;
             const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
+            
+            const newChord = extractChordFromBeat(b);
+            if (newChord) activeChordName = newChord;
+            
             repaintFretboard(barIdx, b.notes || []);
-            lastPaintedBarIdx = barIdx;
 
-            // Sync external audio to the tapped beat's playback time.
-            // absolutePlaybackStart is in milliseconds in alphaTab 1.8.
             const tMs = b.absolutePlaybackStart;
             if (typeof tMs === 'number' && externalAudio && Number.isFinite(externalAudio.duration)) {
                 const targetSec = Math.max(0, Math.min(externalAudio.duration, (tMs - syncOffsetMs) / 1000));
@@ -697,7 +752,7 @@
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // PHASE C — Bridge alphaTab ↔ <audio> via IExternalMediaHandler
+    // PHASE C — Bridge alphaTab ↔ <audio> 
     // ─────────────────────────────────────────────────────────────────────
     function attachExternalMediaHandler() {
         const handler = {
@@ -713,21 +768,16 @@
                 externalAudio.currentTime = (timeMs * externalAudio.playbackRate) / 1000;
             },
             play() {
-                // CRITICAL: this must run synchronously inside the play
-                // button's gesture chain for Safari to permit it.
                 externalAudio.play().catch(e => log("audio.play() rejected: " + e.message));
             },
             pause() { externalAudio.pause(); }
         };
 
         const output = api.player.output;
-        if (!output) { log("No external media output available."); return; }
+        if (!output) return;
         output.handler = handler;
-        log("External media handler attached.");
 
-        // Feed position back to alphaTab so the cursor tracks the audio.
         const onTimeUpdate = () => {
-            // Manual loop wrap — alphaTab can't loop external media on its own
             if (isLoopOn && loopStartMs >= 0 && loopEndMs > loopStartMs) {
                 const curMs = externalAudio.currentTime * 1000;
                 if (curMs >= loopEndMs) {
@@ -752,7 +802,7 @@
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // PLAY BUTTON — strictly synchronous gesture chain
+    // PLAY BUTTON
     // ─────────────────────────────────────────────────────────────────────
     document.getElementById('btn-play').onclick = () => {
         startPlayback();
@@ -771,13 +821,11 @@
         externalAudio.removeAttribute('src');
         externalAudio.load();
 
-        // Per-file sync offset memory
         currentFileKey = file.name + ':' + file.size;
         syncOffsetMs = 0;
         document.getElementById('sync-display').textContent = '0 ms';
         restoreSync(currentFileKey);
 
-        // Reset loop state for new file
         loopStartMs = -1; loopEndMs = -1; isLoopOn = false;
         document.getElementById('btn-loop-a').classList.remove('on');
         document.getElementById('btn-loop-b').classList.remove('on');
@@ -789,7 +837,7 @@
     };
 
     // ─────────────────────────────────────────────────────────────────────
-    // WAV ENCODER (16-bit PCM, interleaved, little-endian)
+    // WAV ENCODER
     // ─────────────────────────────────────────────────────────────────────
     function audioBufferToWavBlob(buffer) {
         const numCh = buffer.numberOfChannels;
@@ -799,18 +847,18 @@
         let pos = 0;
         const set16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
         const set32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
-        set32(0x46464952);              // "RIFF"
+        set32(0x46464952);              
         set32(length - 8);
-        set32(0x45564157);              // "WAVE"
-        set32(0x20746d66);              // "fmt "
+        set32(0x45564157);              
+        set32(0x20746d66);              
         set32(16);
-        set16(1);                       // PCM
+        set16(1);                       
         set16(numCh);
         set32(buffer.sampleRate);
         set32(buffer.sampleRate * 2 * numCh);
         set16(numCh * 2);
         set16(16);
-        set32(0x61746164);              // "data"
+        set32(0x61746164);              
         set32(length - pos - 4);
 
         const channels = [];
@@ -825,8 +873,6 @@
         return new Blob([out], { type: "audio/wav" });
     }
 
-    // 1-frame silent 8 kHz mono WAV — used to pre-warm the <audio> element
-    // inside the boot gesture so Safari trusts later src swaps + play() calls.
     const SILENT_WAV =
         "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 </script>
