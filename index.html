@@ -161,7 +161,13 @@
       playerMode: 1 // Better compatibility for iOS (mixed WebAudio mode)
     }
   });
-
+  api.playerReady.on(() => {
+  if (api.player?.synth) {
+    // Completely disable synth scheduling
+    api.player.synth.playNote = () => {};
+    api.player.synth.playPercussion = () => {};
+  }
+});
   /* ───────────────────────────────────────────
      iOS Audio Unlock (WebAudio + Native Audio)
   ─────────────────────────────────────────── */
