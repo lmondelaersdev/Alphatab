@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AlphaTab Player</title>
+  <title>AlphaTab Player - Safari Optimized</title>
   <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@latest/dist/alphaTab.min.js"></script>
   <style>
     :root {
@@ -148,7 +148,7 @@
   const atEl = document.getElementById('at-element');
 
   /* ───────────────────────────────────────────
-     AlphaTab Init (iOS Optimized)
+     AlphaTab Init
   ─────────────────────────────────────────── */
 
   const api = new alphaTab.AlphaTabApi(atEl, {
@@ -158,51 +158,43 @@
       enablePlayer: true,
       enableCursor: true,
       soundFont: CDN + 'soundfont/sonivox.sf2',
-      playerMode: 1 // Better compatibility for iOS (mixed WebAudio mode)
+      playerMode: 1 // WebAudio mode
     }
   });
-  api.playerReady.on(() => {
-  if (api.player?.synth) {
-    // Completely disable synth scheduling
-    api.player.synth.playNote = () => {};
-    api.player.synth.playPercussion = () => {};
-  }
-});
+
   /* ───────────────────────────────────────────
-     iOS Audio Unlock (WebAudio + Native Audio)
+     Safari/iOS Audio Unlock Logic
   ─────────────────────────────────────────── */
 
-  function forceUnlockAppleAudio() {
-    if (!api.player || !api.player.synth || !api.player.synth.audioContext) return;
-
+  async function unlockAudio() {
+    if (!api.player || !api.player.synth) return;
     const ctx = api.player.synth.audioContext;
+    if (!ctx) return;
 
+    // 1. Resume Context
     if (ctx.state === 'suspended') {
-      ctx.resume().then(() => {
-        // Silent buffer trick (required by iOS)
-        const buffer = ctx.createBuffer(1, 1, 22050);
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(ctx.destination);
-        source.start(0);
-      }).catch(() => {});
+      await ctx.resume();
     }
 
-    // Unlock backing track <audio> element (GP8)
+    // 2. Priming Buffer (Required by Safari to allow WebAudio to produce sound)
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+
+    // 3. Backing Track Unlock (For GP8 Embedded Audio)
+    // We must interact with the HTMLAudioElement specifically
     if (api.player.backingTrackAudio) {
+      const bt = api.player.backingTrackAudio;
       try {
-        const audio = api.player.backingTrackAudio;
-        audio.play().then(() => audio.pause()).catch(() => {});
-      } catch (e) {}
+        await bt.play();
+        bt.pause(); 
+      } catch (e) {
+        console.error("Backing track priming failed", e);
+      }
     }
   }
-
-  // Resume AudioContext when returning to tab
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      forceUnlockAppleAudio();
-    }
-  });
 
   /* ───────────────────────────────────────────
      File Loading
@@ -256,7 +248,7 @@
 
     songInfoEl.innerHTML =
       `<strong>${title}</strong>${artist ? ' &mdash; ' + artist : ''}` +
-      (hasBt ? ` <span style="color:var(--accent)">Audio Embedded</span>` : '');
+      (hasBt ? ` <span style="color:var(--accent); margin-left:10px;">[Audio Track]</span>` : '');
 
     trackListEl.innerHTML = '';
 
@@ -271,12 +263,14 @@
 
       row.querySelector('[data-role="mute"]').addEventListener('click', e => {
         e.stopPropagation();
-        api.changeTrackMute([track], e.target.classList.toggle('on'));
+        const active = e.target.classList.toggle('on');
+        api.changeTrackMute([track], active);
       });
 
       row.querySelector('[data-role="solo"]').addEventListener('click', e => {
         e.stopPropagation();
-        api.changeTrackSolo([track], e.target.classList.toggle('on'));
+        const active = e.target.classList.toggle('on');
+        api.changeTrackSolo([track], active);
       });
 
       trackListEl.appendChild(row);
@@ -295,9 +289,14 @@
   const timeDsp  = document.getElementById('time');
   const progFill = document.getElementById('prog-fill');
 
-  btnPlay.addEventListener('click', () => {
-    forceUnlockAppleAudio(); // MUST be inside user tap
-    api.playPause();
+  btnPlay.addEventListener('click', async () => {
+    // CRITICAL: Unlock must happen inside the click event
+    await unlockAudio();
+    
+    // Tiny delay to ensure Safari has processed the resume command
+    setTimeout(() => {
+        api.playPause();
+    }, 60);
   });
 
   btnStop.addEventListener('click', () => api.stop());
