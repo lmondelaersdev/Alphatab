@@ -433,23 +433,27 @@
 
   /* ─── iOS / WebKit detection ───
    * On iOS every browser (Safari, Chrome, Brave, Firefox…) is forced to use
-   * WebKit. WebKit silently blocks <audio> elements whose src is an async
-   * blob: URL — exactly what AlphaTab produces for GP files with an
-   * embedded backing track (playerMode 3). The audio never starts, the
-   * cursor waits for it, and playback hangs forever before bar 1.
+   * WebKit. WebKit blocks AlphaTab's internal <audio> element because its
+   * src (a blob: URL built off the worker-unzipped MP3 in the .gp file)
+   * is assigned asynchronously outside the original user gesture, so its
+   * .play() call is rejected. AlphaTab's cursor then waits for an audio
+   * event that never fires → playback hangs before bar 1.
    *
-   * Workaround: on iOS force the synthesizer (playerMode 2) so the
-   * SoundFont renders through Web Audio, which iOS handles correctly.
-   * Desktop / Android keep playerMode 1 (Automatic) so they still use the
-   * embedded backing track when one is present.
+   * Fix: on iOS, switch AlphaTab to EnabledExternalMedia (playerMode 4).
+   * We own an <audio> element in the page, feed it the same backing-track
+   * bytes (score.backingTrack.rawAudioFile), and AlphaTab asks *us* to
+   * play/pause/seek. Because our Play button calls our audio element's
+   * .play() directly from inside the tap handler, iOS treats it as a
+   * user-initiated gesture and lets the blob source through.
    */
   const isIOS =
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     // iPadOS 13+ reports as Mac; detect via touch support
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  const PLAYER_MODE_SYNTH     = 2;
-  const PLAYER_MODE_AUTOMATIC = 1;
+  const PLAYER_MODE_AUTOMATIC     = 1;
+  const PLAYER_MODE_BACKING_TRACK = 3;
+  const PLAYER_MODE_EXTERNAL      = 4;
 
   /* ─── AlphaTab init ─── */
   const atEl = document.getElementById('at-element');
@@ -467,9 +471,112 @@
       enablePlayer:  true,
       enableCursor:  true,
       soundFont:     CDN + 'soundfont/sonivox.sf2',
-      playerMode:    isIOS ? PLAYER_MODE_SYNTH : PLAYER_MODE_AUTOMATIC
+      playerMode:    isIOS ? PLAYER_MODE_EXTERNAL : PLAYER_MODE_BACKING_TRACK
     }
   });
+
+  /* ─── iOS external-media pipeline ───
+   * One <audio> element, kept in the DOM across files, driven by the
+   * AlphaTab IExternalMediaHandler interface. The element is created up
+   * front so the first user tap can prime it; later file loads only swap
+   * the blob URL and iOS keeps allowing play() calls.
+   */
+  let iosAudio       = null;
+  let iosBlobUrl     = null;
+  let iosPrimed      = false;
+  let iosHandlerWired = false;
+  let iosPlaybackRate = 1;
+  let iosMasterVolume = 1;
+
+  if (isIOS) {
+    iosAudio = document.createElement('audio');
+    iosAudio.preload = 'auto';
+    iosAudio.playsInline = true;
+    iosAudio.setAttribute('playsinline', '');
+    iosAudio.setAttribute('webkit-playsinline', '');
+    iosAudio.crossOrigin = 'anonymous';
+    iosAudio.style.display = 'none';
+    document.body.appendChild(iosAudio);
+  }
+
+  function setIosBackingTrack(bytes) {
+    if (!iosAudio || !bytes) return;
+    if (iosBlobUrl) {
+      URL.revokeObjectURL(iosBlobUrl);
+      iosBlobUrl = null;
+    }
+    // GP8 embeds MP3/OGG/WAV; audio/mpeg is the common case and
+    // browsers sniff the rest from the bytes regardless of the MIME.
+    const blob = new Blob([bytes], { type: 'audio/mpeg' });
+    iosBlobUrl = URL.createObjectURL(blob);
+    iosAudio.src = iosBlobUrl;
+    iosAudio.playbackRate = iosPlaybackRate;
+    iosAudio.volume = iosMasterVolume;
+    iosAudio.load();
+  }
+
+  /* IExternalMediaHandler implementation. AlphaTab calls these; we push
+   * the real <audio> element around. Position is reported back to the
+   * cursor via IExternalMediaSynthOutput.updatePosition().
+   */
+  const iosExternalMediaHandler = {
+    get backingTrackDuration() {
+      const d = iosAudio ? iosAudio.duration : 0;
+      return Number.isFinite(d) ? d * 1000 : 0;
+    },
+    get playbackRate() { return iosPlaybackRate; },
+    set playbackRate(v) {
+      iosPlaybackRate = v;
+      if (iosAudio) {
+        try { iosAudio.playbackRate = v; } catch (_) {}
+      }
+    },
+    get masterVolume() { return iosMasterVolume; },
+    set masterVolume(v) {
+      iosMasterVolume = Math.max(0, Math.min(1, v));
+      if (iosAudio) iosAudio.volume = iosMasterVolume;
+    },
+    play() {
+      if (!iosAudio) return;
+      const p = iosAudio.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(err => console.warn('iOS audio play() rejected:', err));
+      }
+    },
+    pause() { if (iosAudio) iosAudio.pause(); },
+    seekTo(time) {
+      if (!iosAudio) return;
+      try { iosAudio.currentTime = time / 1000; } catch (_) {}
+    }
+  };
+
+  function wireIosHandler() {
+    if (!isIOS || iosHandlerWired) return true;
+    const output = api.player && api.player.output;
+    if (!output) return false;
+    output.handler = iosExternalMediaHandler;
+    iosHandlerWired = true;
+    return true;
+  }
+
+  if (isIOS) {
+    // player.output is created during init but may appear asynchronously.
+    // Try immediately, then poll briefly until it shows up.
+    if (!wireIosHandler()) {
+      const t = setInterval(() => { if (wireIosHandler()) clearInterval(t); }, 50);
+      setTimeout(() => clearInterval(t), 10000);
+    }
+
+    // Report position back to AlphaTab so the cursor tracks the audio.
+    const pushPosition = () => {
+      const output = api.player && api.player.output;
+      if (output && typeof output.updatePosition === 'function') {
+        output.updatePosition((iosAudio.currentTime || 0) * 1000);
+      }
+    };
+    iosAudio.addEventListener('timeupdate', pushPosition);
+    iosAudio.addEventListener('seeked',     pushPosition);
+  }
 
     
 
@@ -491,10 +598,27 @@
     reader.readAsArrayBuffer(file);
   }
 
-  document.getElementById('btn-open').addEventListener('click', () => fileInput.click());
+  /* Primes the iOS <audio> element inside a user gesture. After this
+   * first successful play(), iOS remembers the element as user-activated,
+   * so later async src changes (blob: URLs from GP files) can be played
+   * without a fresh tap.
+   */
+  function primeIosAudio() {
+    if (!isIOS || iosPrimed || !iosAudio) return;
+    iosPrimed = true;
+    const p = iosAudio.play();
+    if (p && typeof p.catch === 'function') {
+      p.then(() => iosAudio.pause()).catch(() => { iosPrimed = false; });
+    }
+  }
+
+  document.getElementById('btn-open').addEventListener('click', () => {
+    primeIosAudio();
+    fileInput.click();
+  });
   fileInput.addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
 
-  dropBox.addEventListener('click', () => fileInput.click());
+  dropBox.addEventListener('click', () => { primeIosAudio(); fileInput.click(); });
 
   viewport.addEventListener('dragover', e => { e.preventDefault(); dropBox.classList.add('drag-over'); });
   viewport.addEventListener('dragleave', () => dropBox.classList.remove('drag-over'));
@@ -515,6 +639,18 @@
 
   api.scoreLoaded.on(score => {
     dropOverlay.classList.add('hidden');
+
+    // iOS: feed the embedded audio bytes into our own <audio> element.
+    if (isIOS) {
+      wireIosHandler();
+      const bytes = score.backingTrack && score.backingTrack.rawAudioFile;
+      if (bytes && bytes.length) {
+        setIosBackingTrack(bytes);
+      } else if (iosAudio) {
+        iosAudio.removeAttribute('src');
+        iosAudio.load();
+      }
+    }
 
     // Song info
     const title  = score.title  || 'Untitled';
@@ -556,41 +692,6 @@
   api.renderStarted.on(() => loadOverlay.classList.remove('hidden'));
   api.postRenderFinished.on(() => loadOverlay.classList.add('hidden'));
 
-  /* ─── iOS Audio Unlocker ───
-   * iOS requires an AudioContext to be resumed inside a user gesture or it
-   * stays suspended. AlphaTab creates its context during playback, so we
-   * proactively resume any suspended contexts on the first touch / click.
-   * Stays armed until it actually succeeds — the old { once: true } handler
-   * would give up after a single touch that happened before the context
-   * existed, leaving audio permanently suspended.
-   */
-  let iosAudioUnlocked = false;
-
-  function unlockAudio() {
-    if (iosAudioUnlocked) return;
-
-    // Resume any AudioContext AlphaTab may have created.
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (Ctx && Ctx.prototype && typeof Ctx.prototype.resume === 'function') {
-      // Best-effort: AlphaTab exposes its context via api.player on some
-      // versions; if not available we still get unlocked once playback
-      // starts from a gesture (the button handlers below).
-      const ctx = api.player && api.player.output && api.player.output.context;
-      if (ctx && ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-    }
-
-    if (api.isReadyForPlayback) {
-      iosAudioUnlocked = true;
-      document.removeEventListener('touchstart', unlockAudio, true);
-      document.removeEventListener('click',      unlockAudio, true);
-    }
-  }
-
-  document.addEventListener('touchstart', unlockAudio, true);
-  document.addEventListener('click',      unlockAudio, true);
-
   /* ─── Playback controls ─── */
   const btnPlay  = document.getElementById('btn-play');
   const btnStop  = document.getElementById('btn-stop');
@@ -600,7 +701,7 @@
   const timeDsp  = document.getElementById('time');
   const progFill = document.getElementById('prog-fill');
 
-  btnPlay.addEventListener('click',  () => api.playPause());
+  btnPlay.addEventListener('click',  () => { primeIosAudio(); api.playPause(); });
   btnStop.addEventListener('click',  () => api.stop());
 
   btnLoop.addEventListener('click', () => {
@@ -643,6 +744,7 @@
     const v = parseInt(slVol.value, 10);
     volVal.textContent = v + '%';
     api.masterVolume = v / 100;
+    if (isIOS) iosExternalMediaHandler.masterVolume = Math.min(1, v / 100);
   });
 
   /* ─── Speed ─── */
@@ -652,6 +754,7 @@
     const v = parseInt(slSpeed.value, 10);
     speedVal.textContent = v + '%';
     api.playbackSpeed = v / 100;
+    if (isIOS) iosExternalMediaHandler.playbackRate = v / 100;
   });
 
   /* ─── Layout / notation / zoom ─── */
