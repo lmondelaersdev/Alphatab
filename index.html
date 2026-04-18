@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - The Double Load Sync</title>
+    <title>AlphaTab Safari - The Final Sync</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -68,9 +68,9 @@
     let api = null;
     let webAudioCtx = null;
     
-    // TWO-PASS LOAD VARIABLES
+    // STRICT STATE MACHINE
     let globalFileBuffer = null;
-    let syncState = 0; // 0 = idle, 1 = extracting, 2 = syncing
+    let syncState = 0; // 0=Idle, 1=Pass 1, 2=Converting (Ignore Events), 3=Pass 2
 
     // --- RAW PCM TO WAV BYTE ARRAY ---
     function audioBufferToWavBlob(buffer) {
@@ -142,23 +142,29 @@
             btnPlay.innerText = "⏳";
             btnPlay.style.background = "#475569";
             
-            // RESET EVERYTHING FOR PASS 1
-            syncState = 1;
+            syncState = 1; // Start Pass 1
             api.settings.player.backingTrack = ""; 
             
             log("PASS 1: Loading file to extract OGG...");
             const reader = new FileReader();
             reader.onload = (args) => { 
                 globalFileBuffer = args.target.result;
-                api.load(globalFileBuffer); 
+                // Use a Uint8Array clone so AlphaTab doesn't destroy the buffer
+                api.load(new Uint8Array(globalFileBuffer)); 
             };
             reader.readAsArrayBuffer(file);
         });
 
         // --- THE TWO-PASS EVENT LOOP ---
         api.playerReady.on(() => {
+            if (syncState === 2) {
+                // Ignore random events while decoding
+                return; 
+            }
+
             if (syncState === 1) {
                 log("Pass 1 Complete. Hunting for OGG Blob...");
+                syncState = 2; // LOCK STATE: WE ARE NOW CONVERTING
                 
                 let foundUrl = null;
                 const searchForAudio = (obj, depth = 0) => {
@@ -178,8 +184,7 @@
                 searchForAudio(api);
 
                 if (foundUrl) {
-                    syncState = 2; // Lock state for Pass 2
-                    log("OGG found. Decoding...");
+                    log("OGG found. Decoding asynchronously...");
                     
                     fetch(foundUrl)
                         .then(res => res.arrayBuffer())
@@ -188,15 +193,19 @@
                             const wavBlob = audioBufferToWavBlob(decodedData);
                             const wavUrl = URL.createObjectURL(wavBlob);
                             
-                            log("PASS 2: Re-loading GP8 file to apply perfect Sync Map...");
-                            // Inject settings silently
+                            log("PASS 2: Re-loading GP8 file with Safari-friendly WAV...");
                             api.settings.player.backingTrack = wavUrl;
                             
-                            // Re-load the EXACT SAME BINARY DATA. 
-                            // AlphaTab will rebuild the entire song natively around our new WAV!
-                            api.load(globalFileBuffer);
+                            syncState = 3; // UNLOCK STATE FOR PASS 2
+                            api.load(new Uint8Array(globalFileBuffer));
                         })
-                        .catch(err => { log("Decode Error: " + err.message); });
+                        .catch(err => { 
+                            log("Decode Error: " + err.message); 
+                            syncState = 0; // Fail gracefully
+                            btnPlay.innerText = "▶";
+                            btnPlay.disabled = false;
+                            btnPlay.style.background = "var(--accent)";
+                        });
                 } else {
                     log("No OGG found. MIDI Only mode.");
                     syncState = 0;
@@ -205,10 +214,10 @@
                     btnPlay.style.background = "var(--accent)";
                 }
 
-            } else if (syncState === 2) {
-                // PASS 2 IS COMPLETE!
+            } else if (syncState === 3) {
+                // PASS 2 IS COMPLETE
                 log("SUCCESS: Native Sync Map Generated! Ready to play.");
-                syncState = 0;
+                syncState = 0; // Reset to idle
                 btnPlay.innerText = "▶";
                 btnPlay.disabled = false;
                 btnPlay.style.background = "var(--accent)";
