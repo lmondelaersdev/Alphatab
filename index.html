@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Brute Force Play</title>
+    <title>AlphaTab Safari - Ultimate Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -21,7 +21,6 @@
         
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: var(--bg); text-align: center; }
         
-        /* INCREASED DEBUG LOG SIZE TO SEE ERRORS */
         #debug-log { font-size: 11px; color: #fbbf24; margin-top: 15px; font-family: monospace; width: 90%; text-align: left; background: #000; padding: 10px; border-radius: 5px; height: 120px; overflow-y: auto; }
 
         .at-cursor-bar { background: rgba(233, 69, 96, 0.15) !important; }
@@ -59,7 +58,7 @@
 <script>
     const logBox = document.getElementById('debug-log');
     const log = (msg) => { 
-        console.log(msg); // Also logs to browser console
+        console.log(msg); 
         logBox.innerText += "\n> " + msg; 
         logBox.scrollTop = logBox.scrollHeight; 
     };
@@ -85,10 +84,13 @@
                 }
             });
 
+            // FIX: Unlock UI immediately instead of waiting for a render!
+            document.getElementById('startup-screen').style.display = 'none';
+            document.getElementById('app').classList.add('ready');
+            log("UI Unlocked. Waiting for file...");
+
             api.renderFinished.on(() => {
-                document.getElementById('startup-screen').style.display = 'none';
-                document.getElementById('app').classList.add('ready');
-                log("UI Ready.");
+                log("Score successfully rendered on screen.");
             });
 
             setupControls();
@@ -112,7 +114,11 @@
             const reader = new FileReader();
             reader.onload = (args) => {
                 log("Parsing file... " + file.name);
-                api.load(args.target.result);
+                try {
+                    api.load(args.target.result);
+                } catch(err) {
+                    log("Parse Error: " + err.message);
+                }
             };
             reader.readAsArrayBuffer(file);
         };
@@ -122,28 +128,19 @@
             btnPlay.style.background = "var(--accent)";
         });
 
-        // --- BRUTE FORCE PLAY BUTTON ---
         btnPlay.onclick = async () => {
             log("--- PLAY CLICKED ---");
             
             try {
-                // 1. Force WebAudio Unlock
                 if (api.player?.synth?.audioContext) {
                     if (api.player.synth.audioContext.state !== 'running') {
-                        log("Resuming AudioContext...");
+                        log("Resuming Safari AudioContext...");
                         await api.player.synth.audioContext.resume();
-                        log("AudioContext State: " + api.player.synth.audioContext.state);
-                    } else {
-                        log("AudioContext already running.");
+                        log("Context State: " + api.player.synth.audioContext.state);
                     }
-                } else {
-                    log("Warning: No AudioContext found.");
                 }
 
-                // 2. Check Readiness
                 log("isReadyForPlayback: " + api.isReadyForPlayback);
-
-                // 3. Force Play regardless of readiness
                 log("Executing api.playPause()...");
                 api.playPause();
 
