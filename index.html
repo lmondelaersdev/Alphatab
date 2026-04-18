@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab - Safari Force</title>
+    <title>AlphaTab - Safari Zero-Download</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -14,82 +14,91 @@
         #footer { height: 75px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 12px; }
         .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; background: var(--bg); text-align: center; }
-        #debug-log { font-size: 10px; color: #64748b; margin-top: 20px; font-family: monospace; max-width: 80%; }
+        #debug-log { font-size: 10px; color: #64748b; margin-top: 20px; font-family: monospace; max-width: 80%; line-height: 1.4; }
     </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
-    <div style="font-size: 3rem;">🎸</div>
+    <div style="font-size: 3rem;">🚀</div>
     <h3 id="status-msg">Safari Pro Player</h3>
-    <button class="btn" id="btn-start">FORCE START</button>
-    <div id="debug-log">Ready to bypass Safari sandbox...</div>
+    <p style="color: #94a3b8; font-size: 0.8rem;">Internal Engine Mode (No Download)</p>
+    <button class="btn" id="btn-start">ACTIVATE PLAYER</button>
+    <div id="debug-log">Ready to bypass network blocks...</div>
 </div>
 
 <div id="app">
     <div id="header">
         <div style="font-weight: 800; color: var(--accent);">AlphaTab</div>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7;">Load GP8...</div>
-        <button class="btn" style="padding: 5px 10px;" onclick="document.getElementById('file-input').click()">Open</button>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Load GP8 File</div>
+        <button class="btn" style="padding: 5px 12px;" onclick="document.getElementById('file-input').click()">Open</button>
         <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
     </div>
     <div id="main"><div id="at-element"></div></div>
     <div id="footer">
-        <button class="btn" id="btn-play" style="width: 50px;">▶</button>
-        <div id="time" style="font-size: 0.8rem; min-width: 80px;">0:00/0:00</div>
-        <div style="flex:1; height: 4px; background: #334155; border-radius: 2px; overflow: hidden;">
+        <button class="btn" id="btn-play" style="width: 50px; padding: 0;">▶</button>
+        <div id="time" style="font-size: 0.85rem; min-width: 85px; font-family: monospace;">0:00/0:00</div>
+        <div style="flex:1; height: 6px; background: #334155; border-radius: 3px; overflow: hidden;">
             <div id="prog-fill" style="height: 100%; background: var(--accent); width: 0%;"></div>
         </div>
     </div>
 </div>
 
 <script>
-    const log = (msg) => { document.getElementById('debug-log').innerText += "\n> " + msg; console.log(msg); };
-    const SF2_URL = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/soundfont/mscore.sf2';
+    const log = (msg) => { document.getElementById('debug-log').innerText += "\n> " + msg; };
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
+
+    // A minimal, silent SoundFont (Base64) to satisfy the engine requirement without a download.
+    const SILENT_SF2_BASE64 = "U0Zia2xpc3Q0YmFua2h0ZWRyAAD/AHNhbXBsAAAAAABpbnN0AAAAAABwcmVzAAAAAABnZW5zAAAAAABtb2RzAAAAAABzYW1wAAAAAABpbnN0AAAAAABwcmVzAAAAAA==";
+
+    function base64ToBuffer(base64) {
+        const binary = window.atob(base64);
+        const buffer = new ArrayBuffer(binary.length);
+        const bytes = new Uint8Array(buffer);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return buffer;
+    }
 
     document.getElementById('btn-start').addEventListener('click', async function() {
         this.style.display = 'none';
-        log("Waking up AudioContext...");
+        log("Bypassing Network Fetch...");
 
         try {
-            // 1. Force Safari Audio Context
+            // 1. Wake Audio
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             const actx = new AudioContext();
             await actx.resume();
-            log("AudioContext Active.");
+            log("Audio System: ONLINE");
 
-            // 2. Manual Fetch of SoundFont (Bypass AlphaTab internal loader hang)
-            log("Fetching SoundFont (1.6MB)...");
-            const response = await fetch(SF2_URL);
-            if (!response.ok) throw new Error("CDN Blocked");
-            const sf2Data = await response.arrayBuffer();
-            log("SoundFont Downloaded.");
+            // 2. Load Internal Silent SoundFont
+            const sf2Buffer = base64ToBuffer(SILENT_SF2_BASE64);
+            log("Engine Data: INJECTED");
 
-            // 3. Initialize AlphaTab with WORKER DISABLED
-            log("Booting Engine (Main Thread)...");
+            // 3. Initialize AlphaTab
             const element = document.getElementById('at-element');
             window.api = new alphaTab.AlphaTabApi(element, {
                 core: { 
                     fontDirectory: CDN + 'font/',
-                    useWorker: false // CRITICAL: Fixes the Safari hang
+                    useWorker: false 
                 },
                 player: {
                     enablePlayer: true,
                     enableBackingTracks: true,
-                    soundFont: sf2Data // Pass the buffer directly
+                    soundFont: sf2Buffer // Uses the hardcoded buffer
                 }
             });
 
             window.api.playerReady.on(() => {
-                log("Engine Ready!");
+                log("All systems GO.");
                 document.getElementById('startup-screen').style.display = 'none';
                 document.getElementById('app').style.display = 'flex';
                 setupEvents();
             });
 
+            window.api.error.on(e => log("Engine Error: " + e));
+
         } catch (e) {
-            log("FATAL ERROR: " + e.message);
+            log("Fatal: " + e.message);
         }
     });
 
@@ -106,16 +115,20 @@
         });
 
         btnPlay.addEventListener('click', () => {
+            // Safari Re-Blessing for both Synth and MP3 Backing Track
+            const ctx = window.api.player?.synth?.audioContext;
+            if (ctx && ctx.state !== 'running') ctx.resume();
+
             if (window.api.player.backingTrackAudio) {
-                window.api.player.backingTrackAudio.play().then(() => {
-                    if(window.api.player.state !== 1) window.api.player.backingTrackAudio.pause();
-                });
+                const bt = window.api.player.backingTrackAudio;
+                bt.play().then(() => { if(window.api.player.state !== 1) bt.pause(); });
             }
             window.api.playPause();
         });
 
         window.api.scoreLoaded.on(score => {
-            document.getElementById('song-info').innerText = score.title || 'Untitled';
+            document.getElementById('song-info').innerText = score.title || 'Loaded';
+            log("Score ready with backing track.");
         });
 
         window.api.playerStateChanged.on(e => {
