@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - The WAV Hack</title>
+    <title>AlphaTab Safari - The Perfect WAV Hack</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -78,7 +78,6 @@
         const channels = [];
         let sample = 0, offset = 0, pos = 0;
 
-        // Write WAV Header
         const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
         const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
 
@@ -124,7 +123,8 @@
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
-                    enableBackingTracks: true, // Needs to be true for native sync
+                    // IMPORTANT: Start False so we can steal the audio first!
+                    enableBackingTracks: false, 
                     soundFont: CDN + 'soundfont/sonivox.sf2' 
                 }
             });
@@ -152,7 +152,7 @@
             reader.readAsArrayBuffer(file);
         });
 
-        // --- INTERCEPT AND REPLACE BACKING TRACK ---
+        // --- THE HEIST: INTERCEPT THE AUDIO ---
         api.scoreLoaded.on((score) => {
             if (score.audioTracks && score.audioTracks.length > 0) {
                 log("Embedded audio detected. Decoding via WebAudio...");
@@ -161,18 +161,19 @@
 
                 webAudioCtx.decodeAudioData(arrayBuffer, 
                     function(buffer) {
-                        // 1. Convert to WAV Blob
                         const wavBlob = audioBufferToWavBlob(buffer);
-                        // 2. Create local URL
                         const wavUrl = URL.createObjectURL(wavBlob);
                         
                         log("Attaching Safari-friendly WAV to AlphaTab...");
-                        // 3. Inject it into AlphaTab's engine
+                        
+                        // Hand the WAV to AlphaTab and dynamically turn Backing Tracks ON
                         api.settings.player.backingTrack = wavUrl;
+                        api.settings.player.enableBackingTracks = true; 
                         api.updateSettings();
                         
                         btnPlay.disabled = false;
                         btnPlay.style.background = "var(--accent)";
+                        log("Ready to play with native sync!");
                     },
                     function(err) {
                         log("DECODE ERROR: Safari failed to read the OGG file.");
@@ -180,6 +181,10 @@
                 );
             } else {
                 log("No audio track found in file.");
+                // Turn Backing Tracks on anyway just in case it uses MIDI fallback
+                api.settings.player.enableBackingTracks = true;
+                api.updateSettings();
+                
                 btnPlay.disabled = false;
                 btnPlay.style.background = "var(--accent)";
             }
@@ -189,14 +194,12 @@
         btnPlay.addEventListener('click', () => {
             if (webAudioCtx.state === 'suspended') webAudioCtx.resume();
             
-            // Safari tickle
             if (api.player && api.player.synth && api.player.synth.audioContext) {
                 if (api.player.synth.audioContext.state !== 'running') {
                     api.player.synth.audioContext.resume();
                 }
             }
 
-            // If AlphaTab created the internal audio tag for our new WAV, tickle it too
             if(api.player && api.player.backingTrackAudio) {
                 api.player.backingTrackAudio.play().then(() => {
                     if (api.player.state !== 1) api.player.backingTrackAudio.pause();
