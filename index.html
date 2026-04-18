@@ -23,6 +23,12 @@
     .at-cursor-beat { background: var(--accent); width: 3px; }
     .at-selection div { background: rgba(233, 69, 96, 0.1); }
     .at-highlight * { fill: var(--accent) !important; stroke: var(--accent) !important; }
+
+    /* Sync offset row */
+    #sync-row { height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; }
+    .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
+    .sbtn:active { background: var(--accent); }
+    #sync-display { flex: 1; text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; }
     #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
     .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
     .btn:disabled { opacity: 0.5; cursor: wait; }
@@ -65,6 +71,17 @@
 
 <audio id="external-audio" preload="auto" playsinline style="display:none"></audio>
 
+<div id="sync-row">
+    <span style="color: #94a3b8;">SYNC</span>
+    <button class="sbtn" onclick="adjustSync(-1000)">−1s</button>
+    <button class="sbtn" onclick="adjustSync(-100)">−100</button>
+    <button class="sbtn" onclick="adjustSync(-10)">−10</button>
+    <span id="sync-display">0 ms</span>
+    <button class="sbtn" onclick="adjustSync(10)">+10</button>
+    <button class="sbtn" onclick="adjustSync(100)">+100</button>
+    <button class="sbtn" onclick="adjustSync(1000)">+1s</button>
+</div>
+
 <div id="debug-container"><pre id="debug-log">Engine offline.</pre></div>
 
 <script>
@@ -81,6 +98,23 @@
     let positionTimer = 0;
     let handlerWired = false;   // we only attach the IExternalMediaHandler once
     let externalMode = false;   // flips true once a backing track is bound
+    let syncOffsetMs = 0;       // manual cursor↔audio drift correction
+
+    // ─────────────────────────────────────────────────────────────────────
+    // SYNC OFFSET — adjustable at runtime
+    // ─────────────────────────────────────────────────────────────────────
+    function adjustSync(deltaMs) {
+        syncOffsetMs += deltaMs;
+        const sign = syncOffsetMs > 0 ? '+' : '';
+        document.getElementById('sync-display').textContent = sign + syncOffsetMs + ' ms';
+        // Push an immediate position update so the cursor jumps without waiting for next tick
+        if (api?.player?.output && externalAudio) {
+            api.player.output.updatePosition(
+                ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
+            );
+        }
+    }
+    window.adjustSync = adjustSync;
 
     // ─────────────────────────────────────────────────────────────────────
     // PHASE A — BOOT (must happen inside a user gesture for Safari)
@@ -249,7 +283,9 @@
 
         // Feed position back to alphaTab so the cursor tracks the audio.
         const onTimeUpdate = () => {
-            output.updatePosition((externalAudio.currentTime / externalAudio.playbackRate) * 1000);
+            output.updatePosition(
+                ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
+            );
         };
         externalAudio.addEventListener('timeupdate', onTimeUpdate);
         externalAudio.addEventListener('seeked', onTimeUpdate);
