@@ -3,26 +3,28 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Ultimate Fix</title>
+    <title>AlphaTab Safari - Sync Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
-        body { height: 100dvh; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
+        body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
         
-        #app { display: flex; flex-direction: column; height: 100%; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
+        #app { display: flex; flex-direction: column; flex: 1; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; overflow: hidden; }
         #app.ready { opacity: 1; pointer-events: all; }
         
-        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; border-bottom: 1px solid #334155; }
+        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; border-bottom: 1px solid #334155; flex-shrink: 0; }
         #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
-        #footer { height: 80px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; }
+        #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
         
-        .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        /* Persistent Debug Log */
+        #debug-container { height: 80px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
+        #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
         
-        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: var(--bg); text-align: center; }
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+        .btn:active { transform: scale(0.95); }
         
-        #debug-log { font-size: 11px; color: #fbbf24; margin-top: 15px; font-family: monospace; width: 90%; text-align: left; background: #000; padding: 10px; border-radius: 5px; height: 120px; overflow-y: auto; }
-
+        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); text-align: center; }
+        
         .at-cursor-bar { background: rgba(233, 69, 96, 0.15) !important; }
         .at-cursor-beat { background: #e94560 !important; width: 3px !important; }
     </style>
@@ -30,14 +32,13 @@
 <body>
 
 <div id="startup-screen" class="overlay">
-    <button class="btn" id="btn-initialize">1. BOOT ENGINE</button>
-    <div id="debug-log">Log initialized...</div>
+    <button class="btn" id="btn-initialize" style="padding: 15px 30px; font-size: 1.2rem;">1. BOOT ENGINE</button>
 </div>
 
 <div id="app">
     <div id="header">
         <div style="font-weight: 800; color: var(--accent);">AlphaTab</div>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7;">Load GP8 File</div>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Load GP8 File</div>
         <button class="btn" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open File</button>
         <input type="file" id="file-input" style="display:none" accept=".gp,.gpx,.gp5,*/*" />
     </div>
@@ -55,6 +56,10 @@
     </div>
 </div>
 
+<div id="debug-container">
+    <pre id="debug-log">System booted. Waiting to initialize...</pre>
+</div>
+
 <script>
     const logBox = document.getElementById('debug-log');
     const log = (msg) => { 
@@ -66,8 +71,8 @@
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     let api = null;
 
-    document.getElementById('btn-initialize').onclick = function() {
-        this.style.display = 'none';
+    document.getElementById('btn-initialize').addEventListener('click', function() {
+        document.getElementById('startup-screen').style.display = 'none';
         log("Booting API...");
         
         try {
@@ -84,36 +89,31 @@
                 }
             });
 
-            // FIX: Unlock UI immediately instead of waiting for a render!
-            document.getElementById('startup-screen').style.display = 'none';
             document.getElementById('app').classList.add('ready');
-            log("UI Unlocked. Waiting for file...");
-
-            api.renderFinished.on(() => {
-                log("Score successfully rendered on screen.");
-            });
+            log("UI Unlocked. Ready for file input.");
 
             setupControls();
 
-        } catch (e) { log("CRASH: " + e.message); }
-    };
+        } catch (e) { log("CRITICAL BOOT CRASH: " + e.message); }
+    });
 
     function setupControls() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
 
-        fileInput.onchange = (e) => {
+        // File Loading
+        fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
             
+            log("Reading file: " + file.name);
             document.getElementById('song-info').innerText = file.name;
             btnPlay.style.background = "#475569";
-            document.getElementById('prog-fill').style.width = '0%';
-            document.getElementById('time').innerText = '0:00 / 0:00';
-
+            btnPlay.innerText = "⏳";
+            
             const reader = new FileReader();
             reader.onload = (args) => {
-                log("Parsing file... " + file.name);
+                log("Sending data to AlphaTab...");
                 try {
                     api.load(args.target.result);
                 } catch(err) {
@@ -121,36 +121,41 @@
                 }
             };
             reader.readAsArrayBuffer(file);
-        };
+        });
+
+        api.renderFinished.on(() => {
+            log("Notation Rendered.");
+        });
 
         api.playerReady.on(() => {
-            log("AlphaTab Engine reports: Ready for audio!");
+            log("Audio Engine Ready!");
+            btnPlay.innerText = "▶";
             btnPlay.style.background = "var(--accent)";
         });
 
-        btnPlay.onclick = async () => {
-            log("--- PLAY CLICKED ---");
+        // SAFARI FIX: NO ASYNC/AWAIT ALLOWED IN THIS HANDLER
+        btnPlay.addEventListener('click', () => {
+            log("Play Button Clicked");
             
             try {
-                if (api.player?.synth?.audioContext) {
+                // Synchronously tickle the AudioContext
+                if (api.player && api.player.synth && api.player.synth.audioContext) {
                     if (api.player.synth.audioContext.state !== 'running') {
-                        log("Resuming Safari AudioContext...");
-                        await api.player.synth.audioContext.resume();
-                        log("Context State: " + api.player.synth.audioContext.state);
+                        log("Sending resume() to Context...");
+                        api.player.synth.audioContext.resume();
                     }
                 }
 
-                log("isReadyForPlayback: " + api.isReadyForPlayback);
-                log("Executing api.playPause()...");
+                log("Calling api.playPause()...");
                 api.playPause();
 
             } catch (err) {
                 log("PLAY ERROR: " + err.message);
             }
-        };
+        });
 
         api.playerStateChanged.on(e => {
-            log("State changed to: " + e.state + " (0=Paused, 1=Playing)");
+            log("State Changed: " + e.state);
             btnPlay.innerText = (e.state === 1) ? '⏸' : '▶';
         });
 
