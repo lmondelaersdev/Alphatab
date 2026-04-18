@@ -45,14 +45,16 @@
         #fb-resizer { height: 16px; background: var(--surface); border-bottom: 1px solid #1a120c; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; flex-shrink: 0; }
         #fb-resizer::after { content: ""; width: 40px; height: 4px; background: #64748b; border-radius: 2px; }
         
-        #fretboard-container { flex: 1; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; position: relative; }
-        #fretboard-container svg { display: block; height: 100%; }
+        #fretboard-container { flex: 1; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; position: relative; white-space: nowrap; }
+        #fretboard { display: inline-block; height: 100%; }
+        #fretboard svg { display: block; height: 100%; width: auto; }
+        
         .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
-        
         .fb-text { font-size: 6.5px; font-family: sans-serif; font-weight: bold; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; opacity: 0; transition: opacity 90ms linear; }
-        #fb-chord-label { position: absolute; top: 4px; left: 8px; font-size: 0.8rem; color: #3b82f6; font-family: sans-serif; font-weight: 800; pointer-events: all; cursor: pointer; z-index: 2; }
         
+        #fb-chord-label { position: absolute; top: 4px; left: 8px; font-size: 0.8rem; color: #3b82f6; font-family: sans-serif; font-weight: 800; pointer-events: all; cursor: pointer; z-index: 2; }
         #fb-bar-label { position: absolute; top: 4px; right: 8px; font-size: 0.65rem; color: var(--accent); font-family: monospace; font-weight: bold; pointer-events: none; z-index: 2; }
+        
         #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
         .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn:disabled { opacity: 0.5; cursor: wait; }
@@ -229,7 +231,902 @@
         const stringX1 = w - FB.padRight;
 
         const parts = [];
-        parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+        // REMOVED fixed width/height so CSS height: 100% and width: auto can scale it responsively
+        parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" style="height: 100%; width: auto; aspect-ratio: ${w} / ${h};">`);
+
+        // Wood & Nut
+        parts.push(`<rect x="${FB.padLeft}" y="${boardTop}" width="${FB.nutWidth + FB.frets * FB.fretWidth}" height="${boardBot - boardTop}" fill="#3a2618"/>`);
+        parts.push(`<rect x="${FB.padLeft}" y="${boardTop}" width="${FB.nutWidth}" height="${boardBot - boardTop}" fill="#e8d8b8"/>`);
+
+        // Frets
+        for (let f = 1; f <= FB.frets; f++) {
+            const x = FB.padLeft + FB.nutWidth + f * FB.fretWidth;
+            parts.push(`<line x1="${x}" y1="${boardTop}" x2="${x}" y2="${boardBot}" stroke="#a89070" stroke-width="1.5"/>`);
+        }
+
+        // Position markers
+        const midY = FB.padTop + ((FB.strings - 1) * FB.stringGap) / 2;
+        for (const fr of [3, 5, 7, 9, 15, 17]) {
+            if (fr > FB.frets) continue;
+            const x = FB.padLeft + FB.nutWidth + (fr - 0.5) * FB.fretWidth;
+            parts.push(`<circle cx="${x}" cy="${midY}" r="3.5" fill="#5a3e28"/>`);
+        }
+        for (const fr of [12]) {
+            if (fr > FB.frets) continue;
+            const x = FB.padLeft + FB.nutWidth + (fr - 0.5) * FB.fretWidth;
+            parts.push(`<circle cx="${x}" cy="${FB.padTop + 1.2 * FB.stringGap}" r="3.5" fill="#5a3e28"/>`);
+            parts.push(`<circle cx="${x}" cy="${FB.padTop + 3.8 * FB.stringGap}" r="3.5" fill="#5a3e28"/>`);
+        }
+
+        // Fret numbers
+        for (let f = 1; f <= FB.frets; f++) {
+            const x = FB.padLeft + FB.nutWidth + (f - 0.5) * FB.fretWidth;
+            parts.push(`<text x="${x}" y="${boardBot + 11}" text-anchor="middle" font-size="9" fill="#7a6450" font-family="monospace">${f}</text>`);
+        }
+
+        // Strings & Dots (s=1 is High E)
+        for (let s = 1; s <= FB.strings; s++) {
+            const y = FB.padTop + (s - 1) * FB.stringGap;
+            const thickness = 0.8 + (s - 1) * 0.25;
+            parts.push(`<line x1="${stringX0}" y1="${y}" x2="${stringX1}" y2="${y}" stroke="#d8d8d8" stroke-width="${thickness}"/>`);
+        }
+
+        for (let s = 1; s <= FB.strings; s++) {
+            const y = FB.padTop + (s - 1) * FB.stringGap;
+            parts.push(`<circle class="fb-dot" id="fb-dot-${s}-0" cx="${FB.padLeft - 14}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
+            parts.push(`<text class="fb-text" id="fb-txt-${s}-0" x="${FB.padLeft - 14}" y="${y}"></text>`);
+            
+            for (let f = 1; f <= FB.frets; f++) {
+                const x = FB.padLeft + FB.nutWidth + (f - 0.5) * FB.fretWidth;
+                parts.push(`<circle class="fb-dot" id="fb-dot-${s}-${f}" cx="${x}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
+                parts.push(`<text class="fb-text" id="fb-txt-${s}-${f}" x="${x}" y="${y}"></text>`);
+            }
+        }
+
+        parts.push('</svg>');
+        return parts.join('');
+    }
+
+    function initFretboard() {
+        document.getElementById('fretboard').innerHTML = buildFretboardSVG();
+        fbDotMap.clear();
+        fbTxtMap.clear();
+        for (let s = 1; s <= FB.strings; s++) {
+            for (let f = 0; f <= FB.frets; f++) {
+                const el = document.getElementById(`fb-dot-${s}-${f}`);
+                const txt = document.getElementById(`fb-txt-${s}-${f}`);
+                if (el) fbDotMap.set(`${s}-${f}`, el);
+                if (txt) fbTxtMap.set(`${s}-${f}`, txt);
+            }
+        }
+    }
+
+    function buildBarNotesMap(score) {
+        const map = new Map();
+        for (const track of score.tracks || []) {
+            for (const staff of track.staves || []) {
+                for (const bar of staff.bars || []) {
+                    const idx = bar.masterBar?.index ?? bar.index ?? -1;
+                    if (idx < 0) continue;
+                    if (!map.has(idx)) map.set(idx, new Set());
+                    const set = map.get(idx);
+                    for (const voice of bar.voices || []) {
+                        for (const beat of voice.beats || []) {
+                            for (const note of beat.notes || []) {
+                                const mappedString = FB.strings - note.string + 1;
+                                const f = note.fret;
+                                if (mappedString > 0 && mappedString <= FB.strings && f >= 0 && f <= FB.frets) {
+                                    set.add(`${mappedString}-${f}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return map;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // THEORY ENGINE & PAINTING
+    // ─────────────────────────────────────────────────────────────────────
+    function getIntervalColor(ivl) {
+        if (ivl.startsWith('1')) return 'rgba(239, 68, 68, 0.6)';   
+        if (ivl.startsWith('3')) return 'rgba(245, 158, 11, 0.6)'; 
+        if (ivl.startsWith('5')) return 'rgba(59, 130, 246, 0.6)'; 
+        if (ivl.startsWith('7')) return 'rgba(139, 92, 246, 0.6)'; 
+        return 'rgba(16, 185, 129, 0.6)';                          
+    }
+
+    function extractChordFromBeat(beat) {
+        if (!beat || !beat.voice || !beat.voice.beats) return null;
+        let chordName = null;
+        for (const b of beat.voice.beats) {
+            if (b.absolutePlaybackStart > beat.absolutePlaybackStart) break;
+            if (b.chord && b.chord.name) chordName = b.chord.name;
+        }
+        return chordName;
+    }
+
+    function toggleTheory() {
+        theoryMode = !theoryMode;
+        document.getElementById('btn-theory').classList.toggle('on', theoryMode);
+        repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+    }
+    window.toggleTheory = toggleTheory;
+
+    document.getElementById('fb-chord-label').onclick = () => {
+        if (!activeChordName) return;
+        if (extCycle === 0) baseChord = activeChordName.replace(/[^A-G#b]/g, ''); 
+        extCycle = (extCycle + 1) % 3;
+        
+        if (extCycle === 0) activeChordName = baseChord;         
+        if (extCycle === 1) activeChordName = baseChord + "maj7"; 
+        if (extCycle === 2) activeChordName = baseChord + "13";   
+        
+        repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+    };
+
+    function repaintFretboard(barIdx, activeNotes) {
+        lastPaintedBarIdx = barIdx;
+        lastActiveNotes = activeNotes;
+
+        fbDotMap.forEach(el => {
+            el.setAttribute('fill', 'transparent');
+            el.setAttribute('stroke', 'transparent');
+            el.setAttribute('r', '5.5');
+        });
+        fbTxtMap.forEach(el => {
+            el.style.opacity = '0';
+            el.textContent = '';
+        });
+
+        if (theoryMode && activeChordName && typeof Tonal !== 'undefined') {
+            const chordData = Tonal.Chord.get(activeChordName);
+            if (!chordData.empty) {
+                const chordChromas = chordData.notes.map(n => Tonal.Note.chroma(n));
+                for (let s = 1; s <= FB.strings; s++) {
+                    for (let f = 0; f <= FB.frets; f++) {
+                        const midi = standardTuningMidi[s - 1] + f;
+                        const chroma = midi % 12;
+                        const noteIdx = chordChromas.indexOf(chroma);
+                        if (noteIdx !== -1) {
+                            const key = `${s}-${f}`;
+                            const dot = fbDotMap.get(key);
+                            const txt = fbTxtMap.get(key);
+                            if (dot && txt) {
+                                const ivl = chordData.intervals[noteIdx];
+                                dot.setAttribute('fill', getIntervalColor(ivl));
+                                dot.setAttribute('r', '6');
+                                txt.textContent = ivl.replace(/M|m|P|d|A/g, ''); 
+                                txt.style.opacity = '1';
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        const barSet = barNotesMap?.get(barIdx);
+        if (barSet) {
+            barSet.forEach(key => {
+                const el = fbDotMap.get(key);
+                if (el) {
+                    if (theoryMode && activeChordName) {
+                        el.setAttribute('stroke', 'rgba(255,255,255,0.9)');
+                        el.setAttribute('stroke-width', '1.5');
+                    } else {
+                        el.setAttribute('fill', 'rgba(255,255,255,0.85)');
+                        el.setAttribute('stroke', '#1a120c');
+                    }
+                }
+            });
+        }
+
+        if (activeNotes) {
+            for (const note of activeNotes) {
+                const mappedString = FB.strings - note.string + 1;
+                const key = `${mappedString}-${note.fret}`;
+                const el = fbDotMap.get(key);
+                const txt = fbTxtMap.get(key);
+                if (el) {
+                    el.setAttribute('fill', '#e94560');
+                    el.setAttribute('stroke', '#fff');
+                    el.setAttribute('stroke-width', '1.5');
+                    el.setAttribute('r', '7.5');
+                }
+                if (txt) txt.style.opacity = '0';
+            }
+        }
+
+        if (barIdx >= 0) document.getElementById('fb-bar-label').textContent = 'BAR ' + (barIdx + 1);
+        document.getElementById('fb-chord-label').textContent = activeChordName || "";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // SYNC OFFSET & TOGGLES
+    // ─────────────────────────────────────────────────────────────────────
+    function adjustSync(deltaMs) {
+        syncOffsetMs += deltaMs;
+        const sign = syncOffsetMs > 0 ? '+' : '';
+        document.getElementById('sync-display').textContent = sign + syncOffsetMs + ' ms';
+        if (api?.player?.output && externalAudio) {
+            api.player.output.updatePosition(((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs);
+        }
+        persistSync();
+    }
+    window.adjustSync = adjustSync;
+
+    function togglePanel(panelId, btn) {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+        const showing = panel.style.display !== 'none';
+        panel.style.display = showing ? 'none' : '';
+        btn.classList.toggle('on', !showing);
+        if (api?.render) setTimeout(() => api.render(), 0);
+    }
+    window.togglePanel = togglePanel;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PRACTICE TOOLS 
+    // ─────────────────────────────────────────────────────────────────────
+    function setLoopA() {
+        if (!externalAudio) return;
+        loopStartMs = externalAudio.currentTime * 1000;
+        document.getElementById('btn-loop-a').classList.add('on');
+        log("Loop A @ " + (loopStartMs/1000).toFixed(2) + "s");
+    }
+    function setLoopB() {
+        if (!externalAudio) return;
+        loopEndMs = externalAudio.currentTime * 1000;
+        document.getElementById('btn-loop-b').classList.add('on');
+        log("Loop B @ " + (loopEndMs/1000).toFixed(2) + "s");
+    }
+    function toggleLoop() {
+        if (loopStartMs < 0 || loopEndMs <= loopStartMs) { log("Loop needs A and B set, with B > A"); return; }
+        isLoopOn = !isLoopOn;
+        document.getElementById('btn-loop-toggle').classList.toggle('on', isLoopOn);
+        log("Loop " + (isLoopOn ? "ON" : "OFF"));
+    }
+    window.setLoopA = setLoopA; window.setLoopB = setLoopB; window.toggleLoop = toggleLoop;
+
+    function adjustSpeed(delta) {
+        currentSpeed = Math.min(1.5, Math.max(0.5, +(currentSpeed + delta).toFixed(2)));
+        if (api) api.playbackSpeed = currentSpeed;
+        if (externalAudio) externalAudio.playbackRate = currentSpeed;
+        document.getElementById('speed-display').textContent = currentSpeed.toFixed(2) + '×';
+    }
+    window.adjustSpeed = adjustSpeed;
+
+    function adjustZoom(delta) {
+        currentZoom = Math.min(2.0, Math.max(0.5, +(currentZoom + delta).toFixed(2)));
+        if (api) { api.settings.display.scale = currentZoom; api.updateSettings(); api.render(); }
+    }
+    window.adjustZoom = adjustZoom;
+
+    function toggleCountIn() {
+        isCountInOn = !isCountInOn;
+        document.getElementById('btn-countin').classList.toggle('on', isCountInOn);
+    }
+    window.toggleCountIn = toggleCountIn;
+
+    function playClick(accent) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.frequency.value = accent ? 1500 : 1000;
+        osc.type = 'square';
+        const t = audioCtx.currentTime;
+        gain.gain.setValueAtTime(0.25, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        osc.start(t); osc.stop(t + 0.05);
+    }
+
+    async function startPlayback() {
+        if (audioCtx.state !== 'running') audioCtx.resume();
+        if (api?.playerState === 1) { api.playPause(); return; }
+        if (!isCountInOn) { api.playPause(); return; }
+
+        const tempo = scoreRef?.masterBars?.[0]?.tempoAutomations?.[0]?.value || scoreRef?.tempo || 120;
+        const beats = scoreRef?.masterBars?.[0]?.timeSignatureNumerator || 4;
+        const beatMs = 60000 / tempo / currentSpeed;
+
+        for (let i = 0; i < beats; i++) {
+            playClick(i === 0);
+            await new Promise(r => setTimeout(r, beatMs));
+        }
+        api.playPause();
+    }
+    window.startPlayback = startPlayback;
+
+    function populateTrackSelect(score) {
+        const sel = document.getElementById('track-select');
+        sel.innerHTML = '<option value="-1">All tracks</option>';
+        (score.tracks || []).forEach((track, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = (track.name || ('Track ' + (i+1))).slice(0, 24);
+            sel.appendChild(opt);
+        });
+        sel.onchange = () => {
+            currentTrackIdx = parseInt(sel.value, 10);
+            const tracks = currentTrackIdx < 0 ? score.tracks : [score.tracks[currentTrackIdx]];
+            api.renderTracks(tracks);
+            barNotesMap = buildBarNotesMap({ tracks });
+            lastPaintedBarIdx = -2;
+            repaintFretboard(0, null);
+        };
+    }
+
+    function persistSync() {
+        if (!currentFileKey) return;
+        try { localStorage.setItem('at-sync:' + currentFileKey, String(syncOffsetMs)); } catch(e) {}
+    }
+    function restoreSync(fileKey) {
+        try {
+            const v = localStorage.getItem('at-sync:' + fileKey);
+            if (v !== null) {
+                syncOffsetMs = parseInt(v, 10) || 0;
+                const sign = syncOffsetMs > 0 ? '+' : '';
+                document.getElementById('sync-display').textContent = sign + syncOffsetMs + ' ms';
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PHASE A — BOOT 
+    // ─────────────────────────────────────────────────────────────────────
+    document.getElementById('btn-initialize').onclick = async function () {
+        this.disabled = true;
+        log("Boot gesture received.");
+
+        externalAudio = document.getElementById('external-audio');
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        await audioCtx.resume();
+        log("AudioContext: " + audioCtx.state);
+
+        externalAudio.src = SILENT_WAV;
+        try {
+            const p = externalAudio.play();
+            externalAudio.pause();
+            externalAudio.currentTime = 0;
+            await p.catch(() => {}); 
+        } catch (e) { log("Audio activation skipped: " + e.message); }
+
+        api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
+            core: { fontDirectory: CDN + 'font/' },
+            player: {
+                enablePlayer: true,
+                enableCursor: true,
+                enableUserInteraction: true,
+                soundFont: CDN + 'soundfont/sonivox.sf2',
+                playerMode: alphaTab.PlayerMode.EnabledExternalMedia,
+                scrollMode: alphaTab.ScrollMode.Continuous,
+                scrollElement: document.getElementById('main'),
+                scrollOffsetY: -30,
+                scrollSpeed: 300
+            }
+        });
+
+        wireApiEvents();
+        initFretboard();
+        wirePinchZoom();
+
+        document.getElementById('startup-screen').style.display = 'none';
+        document.getElementById('app').classList.add('ready');
+        log("Engine online.");
+    };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PINCH-TO-ZOOM 
+    // ─────────────────────────────────────────────────────────────────────
+    function wirePinchZoom() {
+        const main = document.getElementById('main');
+        let pinchDist0 = 0;
+        let pinchScale0 = 1;
+        let pinching = false;
+
+        main.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                pinchDist0 = Math.hypot(dx, dy);
+                pinchScale0 = currentZoom;
+                pinching = true;
+            }
+        }, { passive: true });
+
+        main.addEventListener('touchmove', (e) => {
+            if (pinching && e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                const next = Math.min(2.0, Math.max(0.5, pinchScale0 * (dist / pinchDist0)));
+                main.firstElementChild.style.transformOrigin = '0 0';
+                main.firstElementChild.style.transform = 'scale(' + (next / currentZoom).toFixed(3) + ')';
+            }
+        }, { passive: true });
+
+        main.addEventListener('touchend', () => {
+            if (pinching) {
+                const t = main.firstElementChild.style.transform;
+                const m = t && t.match(/scale\(([\d.]+)\)/);
+                main.firstElementChild.style.transform = '';
+                if (m) {
+                    const factor = parseFloat(m[1]);
+                    const target = +(currentZoom * factor).toFixed(2);
+                    currentZoom = Math.min(2.0, Math.max(0.5, target));
+                    api.settings.display.scale = currentZoom;
+                    api.updateSettings();
+                    api.render();
+                }
+                pinching = false;
+                pinchDist0 = 0;
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PHASE B — Score Load
+    // ─────────────────────────────────────────────────────────────────────
+    function wireApiEvents() {
+        api.scoreLoaded.on(async (score) => {
+            log("Score loaded: " + (score.title || "(untitled)"));
+            scoreRef = score;
+            
+            activeChordName = ""; 
+            extCycle = 0;
+            baseChord = "";
+            document.getElementById('fb-chord-label').textContent = "";
+
+            populateTrackSelect(score);
+            currentTrackIdx = -1;
+
+            barNotesMap = buildBarNotesMap(score);
+            lastPaintedBarIdx = -2;
+            repaintFretboard(0, null);
+
+            const track = score.backingTrack?.rawAudioFile ? { data: score.backingTrack.rawAudioFile } : score.audioTracks?.length ? score.audioTracks[0] : null;
+
+            if (!track || !track.data) {
+                externalMode = false;
+                document.getElementById('mode-pill').classList.remove('live');
+                document.getElementById('mode-pill').textContent = 'SYNTH';
+                return;
+            }
+
+            try {
+                log("Decoding OGG...");
+                const oggCopy = track.data.buffer.slice(track.data.byteOffset, track.data.byteOffset + track.data.byteLength);
+                const decoded = await audioCtx.decodeAudioData(oggCopy);
+
+                log("Encoding WAV...");
+                const wavBlob = audioBufferToWavBlob(decoded);
+
+                if (currentWavUrl) URL.revokeObjectURL(currentWavUrl);
+                currentWavUrl = URL.createObjectURL(wavBlob);
+
+                externalAudio.src = currentWavUrl;
+                await new Promise((res, rej) => {
+                    externalAudio.addEventListener('loadedmetadata', res, { once: true });
+                    externalAudio.addEventListener('error', () => rej(new Error("audio load error")), { once: true });
+                });
+
+                externalMode = true;
+                document.getElementById('mode-pill').classList.add('live');
+                document.getElementById('mode-pill').textContent = 'BACKING';
+                document.getElementById('btn-play').disabled = false;
+                document.getElementById('btn-play').textContent = "▶";
+            } catch (e) { log("Backing track conversion failed: " + e.message); }
+        });
+
+        api.playerReady.on(() => {
+            if (!handlerWired) {
+                attachExternalMediaHandler();
+                handlerWired = true;
+            }
+            document.getElementById('btn-play').disabled = false;
+        });
+
+        api.playerStateChanged.on((e) => {
+            document.getElementById('btn-play').textContent = e.state === 1 ? '⏸' : '▶';
+        });
+
+        api.playerPositionChanged.on((e) => {
+            const cur = e.currentTime / 1000, tot = e.endTime / 1000;
+            const fmt = (s) => isNaN(s) ? "0:00" : Math.floor(s/60) + ":" + Math.floor(s%60).toString().padStart(2, '0');
+            document.getElementById('time').textContent = `${fmt(cur)} / ${fmt(tot)}`;
+            document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
+        });
+
+        api.playedBeatChanged.on((beat) => {
+            const b = beat?.beat || beat;
+            if (!b) return;
+            const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
+            
+            const newChord = extractChordFromBeat(b);
+            if (newChord) activeChordName = newChord;
+            
+            repaintFretboard(barIdx, b.notes || []);
+        });
+
+        api.beatMouseDown.on((beat) => {
+            const b = beat?.beat || beat;
+            if (!b) return;
+            const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
+            
+            const newChord = extractChordFromBeat(b);
+            if (newChord) activeChordName = newChord;
+            
+            repaintFretboard(barIdx, b.notes || []);
+
+            const tMs = b.absolutePlaybackStart;
+            if (typeof tMs === 'number' && externalAudio && Number.isFinite(externalAudio.duration)) {
+                const targetSec = Math.max(0, Math.min(externalAudio.duration, (tMs - syncOffsetMs) / 1000));
+                externalAudio.currentTime = targetSec;
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PHASE C — Bridge alphaTab ↔ <audio> 
+    // ─────────────────────────────────────────────────────────────────────
+    function attachExternalMediaHandler() {
+        const handler = {
+            get backingTrackDuration() {
+                const d = externalAudio.duration;
+                return Number.isFinite(d) ? d * 1000 : 0;
+            },
+            get playbackRate() { return externalAudio.playbackRate; },
+            set playbackRate(v) { externalAudio.playbackRate = v; },
+            get masterVolume() { return externalAudio.volume; },
+            set masterVolume(v) { externalAudio.volume = v; },
+            seekTo(timeMs) {
+                externalAudio.currentTime = (timeMs * externalAudio.playbackRate) / 1000;
+            },
+            play() {
+                externalAudio.play().catch(e => log("audio.play() rejected: " + e.message));
+            },
+            pause() { externalAudio.pause(); }
+        };
+
+        const output = api.player.output;
+        if (!output) return;
+        output.handler = handler;
+
+        const onTimeUpdate = () => {
+            if (isLoopOn && loopStartMs >= 0 && loopEndMs > loopStartMs) {
+                const curMs = externalAudio.currentTime * 1000;
+                if (curMs >= loopEndMs) {
+                    externalAudio.currentTime = loopStartMs / 1000;
+                }
+            }
+            output.updatePosition(
+                ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
+            );
+        };
+        externalAudio.addEventListener('timeupdate', onTimeUpdate);
+        externalAudio.addEventListener('seeked', onTimeUpdate);
+        externalAudio.addEventListener('play', () => {
+            clearInterval(positionTimer);
+            positionTimer = setInterval(onTimeUpdate, 50);
+        });
+        externalAudio.addEventListener('pause', () => clearInterval(positionTimer));
+        externalAudio.addEventListener('ended', () => {
+            clearInterval(positionTimer);
+            api.pause();
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FILE OPEN
+    // ─────────────────────────────────────────────────────────────────────
+    document.getElementById('file-input').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('song-info').textContent = file.name;
+        document.getElementById('btn-play').disabled = true;
+        document.getElementById('btn-play').textContent = "⏳";
+        externalAudio.pause();
+        externalAudio.removeAttribute('src');
+        externalAudio.load();
+
+        currentFileKey = file.name + ':' + file.size;
+        syncOffsetMs = 0;
+        document.getElementById('sync-display').textContent = '0 ms';
+        restoreSync(currentFileKey);
+
+        loopStartMs = -1; loopEndMs = -1; isLoopOn = false;
+        document.getElementById('btn-loop-a').classList.remove('on');
+        document.getElementById('btn-loop-b').classList.remove('on');
+        document.getElementById('btn-loop-toggle').classList.remove('on');
+
+        const reader = new FileReader();
+        reader.onload = (ev) => api.load(ev.target.result);
+        reader.readAsArrayBuffer(file);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // WAV ENCODER
+    // ─────────────────────────────────────────────────────────────────────
+    function audioBufferToWavBlob(buffer) {
+        const numCh = buffer.numberOfChannels;
+        const length = buffer.length * numCh * 2 + 44;
+        const out = new ArrayBuffer(length);
+        const view = new DataView(out);
+        let pos = 0;
+        const set16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
+        const set32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
+        set32(0x46464952);              
+        set32(length - 8);
+        set32(0x45564157);              
+        set32(0x20746d66);              
+        set32(16);
+        set16(1);                       
+        set16(numCh);
+        set32(buffer.sampleRate);
+        set32(buffer.sampleRate * 2 * numCh);
+        set16(numCh * 2);
+        set16(16);
+        set32(0x61746164);              
+        set32(length - pos - 4);
+
+        const channels = [];
+        for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+        for (let i = 0; i < buffer.length; i++) {
+            for (let c = 0; c < numCh; c++) {
+                let s = Math.max(-1, Math.min(1, channels[c][i]));
+                view.setInt16(pos, s < 0 ? s * 32768 : s * 32767, true);
+                pos += 2;
+            }
+        }
+        return new Blob([out], { type: "audio/wav" });
+    }
+
+    const SILENT_WAV =
+        "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+</script>
+
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>AlphaTab Safari — Theory Media Engine</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
+    
+    <style>
+        :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
+        body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
+        #app { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
+        #app.ready { opacity: 1; pointer-events: all; }
+        #header { height: 48px; background: var(--surface); display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid #334155; flex-shrink: 0; gap: 6px; }
+        #main { flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #fff; position: relative; }
+        #at-element { width: 100%; }
+        #footer { height: 56px; background: var(--surface); display: flex; align-items: center; padding: 0 12px; gap: 12px; flex-shrink: 0; }
+        #debug-container { height: 80px; background: #000; padding: 6px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; display: none; }
+
+        /* Toggle pills in header */
+        .tgl { background: #334155; color: #94a3b8; border: none; width: 32px; height: 32px; border-radius: 6px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .tgl.on { background: var(--accent); color: white; }
+
+        /* alphaTab playback cursor */
+        .at-cursor-bar  { background: rgba(255, 242, 0, 0.25); }
+        .at-cursor-beat { background: var(--accent); width: 3px; }
+        .at-selection div { background: rgba(233, 69, 96, 0.1); }
+        .at-highlight * { fill: var(--accent) !important; stroke: var(--accent) !important; }
+
+        /* Unified Practice & Sync row */
+        .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
+        .sbtn:active { background: var(--accent); }
+        .sbtn.on { background: var(--accent); }
+        #sync-display { text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; min-width: 44px; display: inline-block; }
+
+        #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
+        #practice-row .sep { color: #475569; font-weight: bold; margin: 0 2px; }
+        #practice-row select { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; max-width: 110px; }
+        #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; display: inline-block; }
+
+        /* Resizable Fretboard */
+        #fretboard-wrapper { height: 145px; display: flex; flex-direction: column; background: #1a120c; border-top: 1px solid #334155; flex-shrink: 0; }
+        #fb-resizer { height: 16px; background: var(--surface); border-bottom: 1px solid #1a120c; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; flex-shrink: 0; }
+        #fb-resizer::after { content: ""; width: 40px; height: 4px; background: #64748b; border-radius: 2px; }
+        
+        #fretboard-container { flex: 1; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; position: relative; white-space: nowrap; }
+        #fretboard { display: inline-block; height: 100%; }
+        #fretboard svg { display: block; height: 100%; width: auto; }
+        
+        .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
+        .fb-text { font-size: 6.5px; font-family: sans-serif; font-weight: bold; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; opacity: 0; transition: opacity 90ms linear; }
+        
+        #fb-chord-label { position: absolute; top: 4px; left: 8px; font-size: 0.8rem; color: #3b82f6; font-family: sans-serif; font-weight: 800; pointer-events: all; cursor: pointer; z-index: 2; }
+        #fb-bar-label { position: absolute; top: 4px; right: 8px; font-size: 0.65rem; color: var(--accent); font-family: monospace; font-weight: bold; pointer-events: none; z-index: 2; }
+        
+        #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn:disabled { opacity: 0.5; cursor: wait; }
+        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); }
+        .pill { font-size: 0.7rem; padding: 3px 8px; border-radius: 999px; background: #334155; color: #94a3b8; }
+        .pill.live { background: #14532d; color: #86efac; }
+    </style>
+</head>
+<body>
+
+<div id="startup-screen" class="overlay">
+    <button class="btn" id="btn-initialize" style="padding: 15px 30px; font-size: 1.2rem;">BOOT ENGINE</button>
+    <div style="margin-top: 12px; font-size: 0.75rem; opacity: 0.6;">Required by Safari to unlock audio</div>
+</div>
+
+<div id="app">
+    <div id="header">
+        <div style="font-weight: 800; color: var(--accent); font-size: 0.9rem;">αTab</div>
+        <span id="mode-pill" class="pill">SYNTH</span>
+        <div id="song-info" style="flex:1; font-size: 0.75rem; opacity: 0.7; padding-left: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Load a .gp file…</div>
+        <button class="tgl on" id="tgl-practice" title="Settings" onclick="togglePanel('practice-row', this)">⚙</button>
+        <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-wrapper', this)">🎸</button>
+        <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
+        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()">📁</button>
+        <input type="file" id="file-input" style="display:none" />
+    </div>
+    <div id="main"><div id="at-element"></div></div>
+    <div id="footer">
+        <button class="btn" id="btn-play" disabled style="width: 50px; height: 40px; font-size: 1.3rem; padding: 0;">▶</button>
+        <div style="flex:1;">
+            <div id="time" style="font-size: 0.75rem; font-family: monospace; color: #94a3b8;">0:00 / 0:00</div>
+            <div style="height: 5px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 3px;">
+                <div id="prog-fill" style="height: 100%; background: var(--accent); width: 0%;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<audio id="external-audio" preload="auto" playsinline style="display:none"></audio>
+
+<div id="practice-row">
+    <button class="sbtn" id="btn-loop-a" title="Set loop A" onclick="setLoopA()">A</button>
+    <button class="sbtn" id="btn-loop-b" title="Set loop B" onclick="setLoopB()">B</button>
+    <button class="sbtn" id="btn-loop-toggle" title="Toggle loop" onclick="toggleLoop()">⟲</button>
+    <span class="sep">|</span>
+    <button class="sbtn" onclick="adjustSpeed(-0.05)">−</button>
+    <span id="speed-display">1.00×</span>
+    <button class="sbtn" onclick="adjustSpeed(0.05)">+</button>
+    <span class="sep">|</span>
+    <select id="track-select"><option value="-1">All tracks</option></select>
+    <button class="sbtn" id="btn-countin" title="Count-in before play" onclick="toggleCountIn()">📯</button>
+    <button class="sbtn" onclick="adjustZoom(-0.1)">−🔍</button>
+    <button class="sbtn" onclick="adjustZoom(0.1)">+🔍</button>
+    <span class="sep">|</span>
+    <button class="sbtn" id="btn-theory" title="Toggle Theory Matrix" onclick="toggleTheory()" style="color:#fbbf24;">🎓 THEORY</button>
+    <span class="sep">|</span>
+    <span style="color: #94a3b8; font-weight: bold;">SYNC</span>
+    <button class="sbtn" onclick="adjustSync(-1000)">−1s</button>
+    <button class="sbtn" onclick="adjustSync(-100)">−100</button>
+    <button class="sbtn" onclick="adjustSync(-10)">−10</button>
+    <span id="sync-display">0 ms</span>
+    <button class="sbtn" onclick="adjustSync(10)">+10</button>
+    <button class="sbtn" onclick="adjustSync(100)">+100</button>
+    <button class="sbtn" onclick="adjustSync(1000)">+1s</button>
+</div>
+
+<div id="fretboard-wrapper">
+    <div id="fb-resizer"></div>
+    <div id="fretboard-container">
+        <span id="fb-chord-label" title="Click to cycle chord extensions"></span>
+        <span id="fb-bar-label">BAR —</span>
+        <div id="fretboard"></div>
+    </div>
+</div>
+
+<div id="debug-container"><pre id="debug-log">Engine offline.</pre></div>
+
+<script>
+    const log = (m) => {
+        const l = document.getElementById('debug-log');
+        l.innerText += "\n> " + m;
+        l.scrollTop = l.scrollHeight;
+    };
+    const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
+
+    let api, audioCtx;
+    let externalAudio;          
+    let currentWavUrl = null;
+    let positionTimer = 0;
+    let handlerWired = false;   
+    let externalMode = false;   
+    let syncOffsetMs = 0;       
+    let barNotesMap = null;     
+    let fbDotMap = new Map();   
+    let fbTxtMap = new Map();   
+    let lastPaintedBarIdx = -2;
+    let lastActiveNotes = null;
+
+    // Practice state
+    let scoreRef = null;        
+    let currentFileKey = null;  
+    let loopStartMs = -1;       
+    let loopEndMs = -1;
+    let isLoopOn = false;
+    let isCountInOn = false;
+    let currentSpeed = 1.0;
+    let currentZoom = 1.0;
+    let currentTrackIdx = -1;   
+
+    // THEORY ENGINE STATE
+    let theoryMode = false;
+    let activeChordName = "";
+    let extCycle = 0;
+    let baseChord = "";
+    const standardTuningMidi = [64, 59, 55, 50, 45, 40]; 
+
+    // ─────────────────────────────────────────────────────────────────────
+    // RESIZABLE FRETBOARD DRAG LOGIC
+    // ─────────────────────────────────────────────────────────────────────
+    const fbWrapper = document.getElementById('fretboard-wrapper');
+    const fbResizer = document.getElementById('fb-resizer');
+    let isResizingFb = false;
+    let fbStartY = 0;
+    let fbStartHeight = 0;
+
+    function startFbResize(y) {
+        isResizingFb = true;
+        fbStartY = y;
+        fbStartHeight = fbWrapper.getBoundingClientRect().height;
+        document.body.style.userSelect = 'none';
+    }
+
+    function doFbResize(y, e) {
+        if (!isResizingFb) return;
+        if (e && e.cancelable) e.preventDefault(); // Prevent page scroll on touch
+        const delta = fbStartY - y;
+        let newH = fbStartHeight + delta;
+        newH = Math.max(60, Math.min(newH, window.innerHeight * 0.7)); // Clamp height limits
+        fbWrapper.style.height = newH + 'px';
+    }
+
+    function stopFbResize() {
+        if (isResizingFb) {
+            isResizingFb = false;
+            document.body.style.userSelect = '';
+            if (api && api.render) setTimeout(() => api.render(), 0); // Force AT to adjust to new main bounds
+        }
+    }
+
+    fbResizer.addEventListener('touchstart', e => startFbResize(e.touches[0].clientY), { passive: false });
+    document.addEventListener('touchmove', e => { if (isResizingFb) doFbResize(e.touches[0].clientY, e); }, { passive: false });
+    document.addEventListener('touchend', stopFbResize);
+
+    fbResizer.addEventListener('mousedown', e => startFbResize(e.clientY));
+    document.addEventListener('mousemove', e => { if (isResizingFb) doFbResize(e.clientY, e); });
+    document.addEventListener('mouseup', stopFbResize);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FRETBOARD VISUALIZATION
+    // ─────────────────────────────────────────────────────────────────────
+    const FB = {
+        strings: 6, frets: 18,
+        fretWidth: 48, stringGap: 13,
+        padTop: 14, padBottom: 18, padLeft: 28, padRight: 16,
+        nutWidth: 7
+    };
+
+    function buildFretboardSVG() {
+        const w = FB.padLeft + FB.nutWidth + FB.frets * FB.fretWidth + FB.padRight;
+        const h = FB.padTop + (FB.strings - 1) * FB.stringGap + FB.padBottom;
+        const boardTop = FB.padTop - 7;
+        const boardBot = FB.padTop + (FB.strings - 1) * FB.stringGap + 7;
+        const stringX0 = FB.padLeft - 6;
+        const stringX1 = w - FB.padRight;
+
+        const parts = [];
+        // REMOVED fixed width/height so CSS height: 100% and width: auto can scale it responsively
+        parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" style="height: 100%; width: auto; aspect-ratio: ${w} / ${h};">`);
 
         // Wood & Nut
         parts.push(`<rect x="${FB.padLeft}" y="${boardTop}" width="${FB.nutWidth + FB.frets * FB.fretWidth}" height="${boardBot - boardTop}" fill="#3a2618"/>`);
