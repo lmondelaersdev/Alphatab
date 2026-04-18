@@ -3,44 +3,46 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari Fix</title>
+    <title>AlphaTab 1.8 - Safari Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --border: #334155; --text: #e2e8f0; }
-        body { height: 100dvh; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system; }
+        body { height: 100dvh; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; }
         #app { display: none; flex-direction: column; height: 100%; }
         #header { height: 60px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 15px; gap: 10px; }
         #main { flex: 1; overflow: hidden; position: relative; background: #fff; }
         #viewport { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #footer { height: 75px; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 15px; gap: 12px; }
-        .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        #prog-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s; }
+        .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 700; }
+        #prog-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s linear; }
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; background: var(--bg); text-align: center; }
-        .hidden { display: none !important; }
+        .spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
     <div style="font-size: 3rem; margin-bottom: 1rem;">🎸</div>
-    <h3 id="status-msg">Safari Engine Standby</h3>
-    <p id="sub-msg" style="color: #94a3b8; margin-bottom: 20px; font-size: 0.9rem;">Click to force-load audio</p>
-    <button class="btn" id="btn-start">Connect Engine</button>
+    <h3 id="status-msg">Backing Track Player</h3>
+    <p id="sub-msg" style="color: #94a3b8; margin: 10px 0 25px; font-size: 0.9rem;">Optimized for Safari</p>
+    <button class="btn" id="btn-start">Unlock Audio</button>
 </div>
 
 <div id="app">
     <div id="header">
         <div style="font-weight: 800; color: var(--accent);">AlphaTab</div>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7;">No file</div>
-        <button class="btn" style="padding: 5px 12px;" onclick="document.getElementById('file-input').click()">Open</button>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Open GP8 file...</div>
+        <button class="btn" style="padding: 6px 14px;" onclick="document.getElementById('file-input').click()">Open</button>
         <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
     </div>
     <div id="main">
+        <div id="load-layer" class="overlay" style="background: rgba(15,23,42,0.7); display:none;"><div class="spinner"></div><p>Loading...</p></div>
         <div id="viewport"><div id="at-element"></div></div>
     </div>
     <div id="footer">
-        <button class="btn" id="btn-play" style="width: 50px;">▶</button>
-        <div id="time" style="font-family: monospace; font-size: 0.8rem; min-width: 80px;">0:00/0:00</div>
+        <button class="btn" id="btn-play" style="width: 50px; padding: 0;">▶</button>
+        <div id="time" style="font-family: monospace; font-size: 0.85rem; min-width: 85px;">0:00/0:00</div>
         <div style="flex:1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
             <div id="prog-fill"></div>
         </div>
@@ -49,81 +51,74 @@
 
 <script>
     let api = null;
-    // Switching to a more reliable CDN link for AlphaTab 1.8.1
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
+    // Using the much smaller mscore soundfont (1.6MB vs 30MB)
+    const SF2 = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/soundfont/mscore.sf2';
 
-    document.getElementById('btn-start').addEventListener('click', async function() {
-        const btn = this;
+    document.getElementById('btn-start').addEventListener('click', function() {
         const msg = document.getElementById('status-msg');
-        btn.style.display = 'none';
-        msg.innerText = "Bypassing Safari Sandbox...";
+        this.style.display = 'none';
+        msg.innerText = "Initializing Engine...";
 
-        // 1. Manually trigger AudioContext BEFORE AlphaTab starts
-        // This is the #1 reason for 0% hangs in Safari
+        // 1. Force-Start AudioContext for Safari
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const tempCtx = new AudioContext();
-        await tempCtx.resume();
+        tempCtx.resume();
 
-        // 2. Initialize AlphaTab with explicitly defined engine
+        // 2. Initialize AlphaTab
         const element = document.getElementById('at-element');
         api = new alphaTab.AlphaTabApi(element, {
-            core: { 
-                fontDirectory: CDN + 'font/',
-                engine: 'html5' // Force HTML5 canvas for better Safari perf
-            },
+            core: { fontDirectory: CDN + 'font/' },
             player: {
                 enablePlayer: true,
                 enableBackingTracks: true,
-                // Using "mscore" instead of "sonivox" - it's often smaller/faster
-                soundFont: CDN + 'soundfont/sonivox.sf2' 
+                playerMode: 1, // Automatic: Prefers Backing Tracks
+                soundFont: SF2
             }
         });
 
-        // 3. Monitor Network directly
-        api.soundFontLoad.on((e) => {
+        api.soundFontLoad.on(e => {
             const pct = Math.floor((e.loaded / e.total) * 100);
-            msg.innerText = `Loading Sounds: ${pct}%`;
-            if(isNaN(pct)) msg.innerText = "Downloading engine...";
+            msg.innerText = isNaN(pct) ? "Downloading..." : `Loading: ${pct}%`;
         });
 
         api.playerReady.on(() => {
-            document.getElementById('startup-screen').classList.add('hidden');
+            document.getElementById('startup-screen').style.display = 'none';
             document.getElementById('app').style.display = 'flex';
-            initApp();
+            initAppEvents();
         });
 
-        // Fallback for Safari 0% hang
-        setTimeout(() => {
-            if (document.getElementById('app').style.display !== 'flex') {
-                msg.innerText = "Connection slow... forcing wake up...";
-                // Force an internal trigger
-                if(api.player && api.player.synth) api.player.synth.audioContext.resume();
-            }
-        }, 5000);
+        // Error Fallback
+        api.error.on(err => {
+            msg.innerText = "Error: Use a different browser or check connection.";
+            console.error(err);
+        });
     });
 
-    function initApp() {
+    function initAppEvents() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
+        const loadLayer = document.getElementById('load-layer');
 
         fileInput.addEventListener('change', e => {
             const file = e.target.files[0];
             if (!file) return;
+            loadLayer.style.display = 'flex';
             const reader = new FileReader();
             reader.onload = (args) => api.load(args.target.result);
             reader.readAsArrayBuffer(file);
         });
 
         btnPlay.addEventListener('click', () => {
-            // Re-prime Safari audio on every click
+            // Safari Re-Blessing
             if (api.player?.synth?.audioContext?.state !== 'running') {
                 api.player.synth.audioContext.resume();
             }
             
-            // Critical: If GP8 backing track exists, prime it
+            // Prime Backing Track (MP3)
             if (api.player.backingTrackAudio) {
                 const bt = api.player.backingTrackAudio;
-                bt.play().then(() => { if(api.player.state !== 1) bt.pause(); });
+                bt.play().then(() => { if(api.player.state !== 1) bt.pause(); }).catch(()=>{});
             }
             
             api.playPause();
@@ -131,12 +126,14 @@
 
         api.scoreLoaded.on(score => {
             document.getElementById('song-info').innerText = score.title || 'Loaded';
-            // Logic: If there is a backing track, we use it.
+            loadLayer.style.display = 'none';
+            
+            // Sync logic: Ensure backing track is recognized
             setTimeout(() => {
                 if (api.player.backingTrackAudio) {
-                    console.log("GP8 Audio Sync Active");
+                    console.log("GP8 High Quality Audio Sync Enabled");
                 }
-            }, 100);
+            }, 300);
         });
 
         api.playerStateChanged.on(e => {
@@ -146,10 +143,17 @@
         api.playerPositionChanged.on(e => {
             const current = e.currentTime / 1000;
             const total = e.endTime / 1000;
-            const fmt = (s) => Math.floor(s/60) + ":" + (Math.floor(s%60)).toString().padStart(2, '0');
+            const fmt = (s) => {
+                const mins = Math.floor(s/60);
+                const secs = Math.floor(s%60);
+                return mins + ":" + secs.toString().padStart(2, '0');
+            };
             document.getElementById('time').innerText = `${fmt(current)}/${fmt(total)}`;
             document.getElementById('prog-fill').style.width = (e.currentTime / e.endTime * 100) + '%';
         });
+
+        api.renderStarted.on(() => loadLayer.style.display = 'flex');
+        api.postRenderFinished.on(() => loadLayer.style.display = 'none');
     }
 </script>
 </body>
