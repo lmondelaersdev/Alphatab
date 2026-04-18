@@ -644,10 +644,45 @@
       }
     }
 
-    // Song info
+    // Song info + diagnostic: show whether the GP file carries sync
+    // points and, if so, where the first one anchors the audio relative
+    // to bar 1. Lets us see on-device (no devtools needed) whether an
+    // intro misalignment is the file's fault or a playback-side bug.
     const title  = score.title  || 'Untitled';
     const artist = score.artist || '';
-    songInfoEl.innerHTML = `<strong>${title}</strong>${artist ? ' &mdash; ' + artist : ''}`;
+
+    // Walk every master bar and collect sync-point automations.
+    // masterBar.syncPoints is an Automation[], each with type ===
+    // AutomationType.SyncPoint (=4) and a syncPointValue carrying the
+    // millisecondOffset into the audio file.
+    const syncPoints = [];
+    for (let i = 0; i < score.masterBars.length; i++) {
+      const mb = score.masterBars[i];
+      const auts = mb.syncPoints;
+      if (!auts) continue;
+      for (const a of auts) {
+        const v = a && a.syncPointValue;
+        if (v) syncPoints.push({ barIndex: i, ms: v.millisecondOffset });
+      }
+    }
+    const bt    = score.backingTrack;
+    const hasBt = !!(bt && bt.rawAudioFile && bt.rawAudioFile.length);
+    const btKB  = hasBt ? Math.round(bt.rawAudioFile.length / 1024) : 0;
+
+    let diag;
+    if (!hasBt) {
+      diag = 'no backing track';
+    } else if (syncPoints.length === 0) {
+      diag = `backing track ${btKB}KB &middot; NO sync points (MP3 not anchored in GP)`;
+    } else {
+      const first = syncPoints[0];
+      diag = `backing track ${btKB}KB &middot; ${syncPoints.length} sync pt(s) &middot; ` +
+             `first: bar ${first.barIndex + 1} @ audio ${(first.ms/1000).toFixed(2)}s`;
+    }
+
+    songInfoEl.innerHTML =
+      `<strong>${title}</strong>${artist ? ' &mdash; ' + artist : ''}` +
+      ` &middot; <span style="color:var(--accent)">${diag}</span>`;
 
     // Track list
     trackListEl.innerHTML = '';
