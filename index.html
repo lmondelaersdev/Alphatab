@@ -19,26 +19,33 @@
         #footer { height: 56px; background: var(--surface); display: flex; align-items: center; padding: 0 12px; gap: 12px; flex-shrink: 0; }
         #debug-container { height: 80px; background: #000; padding: 6px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; display: none; }
 
+        /* Toggle pills in header */
         .tgl { background: #334155; color: #94a3b8; border: none; width: 32px; height: 32px; border-radius: 6px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
         .tgl.on { background: var(--accent); color: white; }
 
+        /* alphaTab playback cursor */
         .at-cursor-bar  { background: rgba(255, 242, 0, 0.25); }
         .at-cursor-beat { background: var(--accent); width: 3px; }
         .at-selection div { background: rgba(233, 69, 96, 0.1); }
         .at-highlight * { fill: var(--accent) !important; stroke: var(--accent) !important; }
 
-        #sync-row { height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; }
+        /* Unified Practice & Sync row */
         .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
         .sbtn:active { background: var(--accent); }
         .sbtn.on { background: var(--accent); }
-        #sync-display { flex: 1; text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; }
+        #sync-display { text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; min-width: 44px; display: inline-block; }
 
         #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
-        #practice-row .sep { color: #475569; }
+        #practice-row .sep { color: #475569; font-weight: bold; margin: 0 2px; }
         #practice-row select { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; max-width: 110px; }
-        #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; }
+        #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; display: inline-block; }
 
-        #fretboard-container { height: 125px; background: #1a120c; border-top: 1px solid #334155; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; -webkit-overflow-scrolling: touch; position: relative; }
+        /* Resizable Fretboard */
+        #fretboard-wrapper { height: 145px; display: flex; flex-direction: column; background: #1a120c; border-top: 1px solid #334155; flex-shrink: 0; }
+        #fb-resizer { height: 16px; background: var(--surface); border-bottom: 1px solid #1a120c; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; flex-shrink: 0; }
+        #fb-resizer::after { content: ""; width: 40px; height: 4px; background: #64748b; border-radius: 2px; }
+        
+        #fretboard-container { flex: 1; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; position: relative; }
         #fretboard-container svg { display: block; height: 100%; }
         .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
         
@@ -66,9 +73,8 @@
         <div style="font-weight: 800; color: var(--accent); font-size: 0.9rem;">αTab</div>
         <span id="mode-pill" class="pill">SYNTH</span>
         <div id="song-info" style="flex:1; font-size: 0.75rem; opacity: 0.7; padding-left: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Load a .gp file…</div>
-        <button class="tgl on" id="tgl-practice" title="Practice tools" onclick="togglePanel('practice-row', this)">⚙</button>
-        <button class="tgl on" id="tgl-sync" title="Sync controls" onclick="togglePanel('sync-row', this)">⏱</button>
-        <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-container', this)">🎸</button>
+        <button class="tgl on" id="tgl-practice" title="Settings" onclick="togglePanel('practice-row', this)">⚙</button>
+        <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-wrapper', this)">🎸</button>
         <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
         <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()">📁</button>
         <input type="file" id="file-input" style="display:none" />
@@ -88,9 +94,9 @@
 <audio id="external-audio" preload="auto" playsinline style="display:none"></audio>
 
 <div id="practice-row">
-    <button class="sbtn" id="btn-loop-a" title="Set loop start at current position" onclick="setLoopA()">A</button>
-    <button class="sbtn" id="btn-loop-b" title="Set loop end at current position" onclick="setLoopB()">B</button>
-    <button class="sbtn" id="btn-loop-toggle" title="Toggle loop on/off" onclick="toggleLoop()">⟲</button>
+    <button class="sbtn" id="btn-loop-a" title="Set loop A" onclick="setLoopA()">A</button>
+    <button class="sbtn" id="btn-loop-b" title="Set loop B" onclick="setLoopB()">B</button>
+    <button class="sbtn" id="btn-loop-toggle" title="Toggle loop" onclick="toggleLoop()">⟲</button>
     <span class="sep">|</span>
     <button class="sbtn" onclick="adjustSpeed(-0.05)">−</button>
     <span id="speed-display">1.00×</span>
@@ -102,10 +108,8 @@
     <button class="sbtn" onclick="adjustZoom(0.1)">+🔍</button>
     <span class="sep">|</span>
     <button class="sbtn" id="btn-theory" title="Toggle Theory Matrix" onclick="toggleTheory()" style="color:#fbbf24;">🎓 THEORY</button>
-</div>
-
-<div id="sync-row">
-    <span style="color: #94a3b8;">SYNC</span>
+    <span class="sep">|</span>
+    <span style="color: #94a3b8; font-weight: bold;">SYNC</span>
     <button class="sbtn" onclick="adjustSync(-1000)">−1s</button>
     <button class="sbtn" onclick="adjustSync(-100)">−100</button>
     <button class="sbtn" onclick="adjustSync(-10)">−10</button>
@@ -115,10 +119,13 @@
     <button class="sbtn" onclick="adjustSync(1000)">+1s</button>
 </div>
 
-<div id="fretboard-container">
-    <span id="fb-chord-label" title="Click to cycle chord extensions"></span>
-    <span id="fb-bar-label">BAR —</span>
-    <div id="fretboard"></div>
+<div id="fretboard-wrapper">
+    <div id="fb-resizer"></div>
+    <div id="fretboard-container">
+        <span id="fb-chord-label" title="Click to cycle chord extensions"></span>
+        <span id="fb-bar-label">BAR —</span>
+        <div id="fretboard"></div>
+    </div>
 </div>
 
 <div id="debug-container"><pre id="debug-log">Engine offline.</pre></div>
@@ -155,16 +162,53 @@
     let currentZoom = 1.0;
     let currentTrackIdx = -1;   
 
-    // ─────────────────────────────────────────────────────────────────────
     // THEORY ENGINE STATE
-    // ─────────────────────────────────────────────────────────────────────
     let theoryMode = false;
     let activeChordName = "";
     let extCycle = 0;
     let baseChord = "";
-    
-    // High E (64) down to Low E (40)
     const standardTuningMidi = [64, 59, 55, 50, 45, 40]; 
+
+    // ─────────────────────────────────────────────────────────────────────
+    // RESIZABLE FRETBOARD DRAG LOGIC
+    // ─────────────────────────────────────────────────────────────────────
+    const fbWrapper = document.getElementById('fretboard-wrapper');
+    const fbResizer = document.getElementById('fb-resizer');
+    let isResizingFb = false;
+    let fbStartY = 0;
+    let fbStartHeight = 0;
+
+    function startFbResize(y) {
+        isResizingFb = true;
+        fbStartY = y;
+        fbStartHeight = fbWrapper.getBoundingClientRect().height;
+        document.body.style.userSelect = 'none';
+    }
+
+    function doFbResize(y, e) {
+        if (!isResizingFb) return;
+        if (e && e.cancelable) e.preventDefault(); // Prevent page scroll on touch
+        const delta = fbStartY - y;
+        let newH = fbStartHeight + delta;
+        newH = Math.max(60, Math.min(newH, window.innerHeight * 0.7)); // Clamp height limits
+        fbWrapper.style.height = newH + 'px';
+    }
+
+    function stopFbResize() {
+        if (isResizingFb) {
+            isResizingFb = false;
+            document.body.style.userSelect = '';
+            if (api && api.render) setTimeout(() => api.render(), 0); // Force AT to adjust to new main bounds
+        }
+    }
+
+    fbResizer.addEventListener('touchstart', e => startFbResize(e.touches[0].clientY), { passive: false });
+    document.addEventListener('touchmove', e => { if (isResizingFb) doFbResize(e.touches[0].clientY, e); }, { passive: false });
+    document.addEventListener('touchend', stopFbResize);
+
+    fbResizer.addEventListener('mousedown', e => startFbResize(e.clientY));
+    document.addEventListener('mousemove', e => { if (isResizingFb) doFbResize(e.clientY, e); });
+    document.addEventListener('mouseup', stopFbResize);
 
     // ─────────────────────────────────────────────────────────────────────
     // FRETBOARD VISUALIZATION
@@ -187,9 +231,8 @@
         const parts = [];
         parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
 
-        // Wood
+        // Wood & Nut
         parts.push(`<rect x="${FB.padLeft}" y="${boardTop}" width="${FB.nutWidth + FB.frets * FB.fretWidth}" height="${boardBot - boardTop}" fill="#3a2618"/>`);
-        // Nut
         parts.push(`<rect x="${FB.padLeft}" y="${boardTop}" width="${FB.nutWidth}" height="${boardBot - boardTop}" fill="#e8d8b8"/>`);
 
         // Frets
@@ -218,22 +261,18 @@
             parts.push(`<text x="${x}" y="${boardBot + 11}" text-anchor="middle" font-size="9" fill="#7a6450" font-family="monospace">${f}</text>`);
         }
 
-        // Strings (Restored to Top-Down: s=1 is Top/High E, s=6 is Bottom/Low E)
+        // Strings & Dots (s=1 is High E)
         for (let s = 1; s <= FB.strings; s++) {
             const y = FB.padTop + (s - 1) * FB.stringGap;
             const thickness = 0.8 + (s - 1) * 0.25;
             parts.push(`<line x1="${stringX0}" y1="${y}" x2="${stringX1}" y2="${y}" stroke="#d8d8d8" stroke-width="${thickness}"/>`);
         }
 
-        // Dots & Interval Texts
         for (let s = 1; s <= FB.strings; s++) {
             const y = FB.padTop + (s - 1) * FB.stringGap;
-            
-            // Open string
             parts.push(`<circle class="fb-dot" id="fb-dot-${s}-0" cx="${FB.padLeft - 14}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
             parts.push(`<text class="fb-text" id="fb-txt-${s}-0" x="${FB.padLeft - 14}" y="${y}"></text>`);
             
-            // Frets
             for (let f = 1; f <= FB.frets; f++) {
                 const x = FB.padLeft + FB.nutWidth + (f - 0.5) * FB.fretWidth;
                 parts.push(`<circle class="fb-dot" id="fb-dot-${s}-${f}" cx="${x}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
@@ -259,8 +298,6 @@
         }
     }
 
-    // AlphaTab counts strings Bottom-Up (1 = Low Pitch/Bottom). 
-    // We map it to Top-Down (1 = High Pitch/Top).
     function buildBarNotesMap(score) {
         const map = new Map();
         for (const track of score.tracks || []) {
@@ -273,7 +310,6 @@
                     for (const voice of bar.voices || []) {
                         for (const beat of voice.beats || []) {
                             for (const note of beat.notes || []) {
-                                // INVERT ALPHATAB STRING INDEX
                                 const mappedString = FB.strings - note.string + 1;
                                 const f = note.fret;
                                 if (mappedString > 0 && mappedString <= FB.strings && f >= 0 && f <= FB.frets) {
@@ -292,11 +328,11 @@
     // THEORY ENGINE & PAINTING
     // ─────────────────────────────────────────────────────────────────────
     function getIntervalColor(ivl) {
-        if (ivl.startsWith('1')) return 'rgba(239, 68, 68, 0.6)';   // Red
-        if (ivl.startsWith('3')) return 'rgba(245, 158, 11, 0.6)'; // Orange
-        if (ivl.startsWith('5')) return 'rgba(59, 130, 246, 0.6)'; // Blue
-        if (ivl.startsWith('7')) return 'rgba(139, 92, 246, 0.6)'; // Purple
-        return 'rgba(16, 185, 129, 0.6)';                          // Green (Ext)
+        if (ivl.startsWith('1')) return 'rgba(239, 68, 68, 0.6)';   
+        if (ivl.startsWith('3')) return 'rgba(245, 158, 11, 0.6)'; 
+        if (ivl.startsWith('5')) return 'rgba(59, 130, 246, 0.6)'; 
+        if (ivl.startsWith('7')) return 'rgba(139, 92, 246, 0.6)'; 
+        return 'rgba(16, 185, 129, 0.6)';                          
     }
 
     function extractChordFromBeat(beat) {
@@ -316,7 +352,6 @@
     }
     window.toggleTheory = toggleTheory;
 
-    // Cycle chord extensions on click
     document.getElementById('fb-chord-label').onclick = () => {
         if (!activeChordName) return;
         if (extCycle === 0) baseChord = activeChordName.replace(/[^A-G#b]/g, ''); 
@@ -333,7 +368,6 @@
         lastPaintedBarIdx = barIdx;
         lastActiveNotes = activeNotes;
 
-        // Clear all
         fbDotMap.forEach(el => {
             el.setAttribute('fill', 'transparent');
             el.setAttribute('stroke', 'transparent');
@@ -344,18 +378,15 @@
             el.textContent = '';
         });
 
-        // LAYER 1: THEORY MATRIX
         if (theoryMode && activeChordName && typeof Tonal !== 'undefined') {
             const chordData = Tonal.Chord.get(activeChordName);
             if (!chordData.empty) {
                 const chordChromas = chordData.notes.map(n => Tonal.Note.chroma(n));
-                
                 for (let s = 1; s <= FB.strings; s++) {
                     for (let f = 0; f <= FB.frets; f++) {
                         const midi = standardTuningMidi[s - 1] + f;
                         const chroma = midi % 12;
                         const noteIdx = chordChromas.indexOf(chroma);
-                        
                         if (noteIdx !== -1) {
                             const key = `${s}-${f}`;
                             const dot = fbDotMap.get(key);
@@ -373,7 +404,6 @@
             }
         }
 
-        // LAYER 2: BAR NOTES (Context)
         const barSet = barNotesMap?.get(barIdx);
         if (barSet) {
             barSet.forEach(key => {
@@ -390,13 +420,10 @@
             });
         }
 
-        // LAYER 3: ACTIVE NOTES (Action)
         if (activeNotes) {
             for (const note of activeNotes) {
-                // INVERT ALPHATAB STRING INDEX HERE TOO
                 const mappedString = FB.strings - note.string + 1;
                 const key = `${mappedString}-${note.fret}`;
-                
                 const el = fbDotMap.get(key);
                 const txt = fbTxtMap.get(key);
                 if (el) {
@@ -409,32 +436,24 @@
             }
         }
 
-        // Labels
-        if (barIdx >= 0) {
-            document.getElementById('fb-bar-label').textContent = 'BAR ' + (barIdx + 1);
-        }
+        if (barIdx >= 0) document.getElementById('fb-bar-label').textContent = 'BAR ' + (barIdx + 1);
         document.getElementById('fb-chord-label').textContent = activeChordName || "";
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // SYNC OFFSET
+    // SYNC OFFSET & TOGGLES
     // ─────────────────────────────────────────────────────────────────────
     function adjustSync(deltaMs) {
         syncOffsetMs += deltaMs;
         const sign = syncOffsetMs > 0 ? '+' : '';
         document.getElementById('sync-display').textContent = sign + syncOffsetMs + ' ms';
         if (api?.player?.output && externalAudio) {
-            api.player.output.updatePosition(
-                ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
-            );
+            api.player.output.updatePosition(((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs);
         }
         persistSync();
     }
     window.adjustSync = adjustSync;
 
-    // ─────────────────────────────────────────────────────────────────────
-    // PANEL TOGGLES 
-    // ─────────────────────────────────────────────────────────────────────
     function togglePanel(panelId, btn) {
         const panel = document.getElementById(panelId);
         if (!panel) return;
@@ -461,17 +480,12 @@
         log("Loop B @ " + (loopEndMs/1000).toFixed(2) + "s");
     }
     function toggleLoop() {
-        if (loopStartMs < 0 || loopEndMs <= loopStartMs) {
-            log("Loop needs A and B set, with B > A");
-            return;
-        }
+        if (loopStartMs < 0 || loopEndMs <= loopStartMs) { log("Loop needs A and B set, with B > A"); return; }
         isLoopOn = !isLoopOn;
         document.getElementById('btn-loop-toggle').classList.toggle('on', isLoopOn);
         log("Loop " + (isLoopOn ? "ON" : "OFF"));
     }
-    window.setLoopA = setLoopA;
-    window.setLoopB = setLoopB;
-    window.toggleLoop = toggleLoop;
+    window.setLoopA = setLoopA; window.setLoopB = setLoopB; window.toggleLoop = toggleLoop;
 
     function adjustSpeed(delta) {
         currentSpeed = Math.min(1.5, Math.max(0.5, +(currentSpeed + delta).toFixed(2)));
@@ -483,12 +497,7 @@
 
     function adjustZoom(delta) {
         currentZoom = Math.min(2.0, Math.max(0.5, +(currentZoom + delta).toFixed(2)));
-        if (api) {
-            api.settings.display.scale = currentZoom;
-            api.updateSettings();
-            api.render();
-        }
-        log("Zoom: " + currentZoom.toFixed(2) + "×");
+        if (api) { api.settings.display.scale = currentZoom; api.updateSettings(); api.render(); }
     }
     window.adjustZoom = adjustZoom;
 
@@ -502,15 +511,13 @@
         if (!audioCtx) return;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
+        osc.connect(gain); gain.connect(audioCtx.destination);
         osc.frequency.value = accent ? 1500 : 1000;
         osc.type = 'square';
         const t = audioCtx.currentTime;
         gain.gain.setValueAtTime(0.25, t);
         gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-        osc.start(t);
-        osc.stop(t + 0.05);
+        osc.start(t); osc.stop(t + 0.05);
     }
 
     async function startPlayback() {
@@ -522,7 +529,6 @@
         const beats = scoreRef?.masterBars?.[0]?.timeSignatureNumerator || 4;
         const beatMs = 60000 / tempo / currentSpeed;
 
-        log(`Count-in: ${beats} beats @ ${tempo} BPM`);
         for (let i = 0; i < beats; i++) {
             playClick(i === 0);
             await new Promise(r => setTimeout(r, beatMs));
@@ -561,7 +567,6 @@
                 syncOffsetMs = parseInt(v, 10) || 0;
                 const sign = syncOffsetMs > 0 ? '+' : '';
                 document.getElementById('sync-display').textContent = sign + syncOffsetMs + ' ms';
-                if (syncOffsetMs !== 0) log("Restored sync offset: " + syncOffsetMs + " ms");
                 return true;
             }
         } catch(e) {}
@@ -586,10 +591,7 @@
             externalAudio.pause();
             externalAudio.currentTime = 0;
             await p.catch(() => {}); 
-            log("Audio element activated.");
-        } catch (e) {
-            log("Audio activation skipped: " + e.message);
-        }
+        } catch (e) { log("Audio activation skipped: " + e.message); }
 
         api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
             core: { fontDirectory: CDN + 'font/' },
@@ -668,12 +670,10 @@
     // PHASE B — Score Load
     // ─────────────────────────────────────────────────────────────────────
     function wireApiEvents() {
-
         api.scoreLoaded.on(async (score) => {
             log("Score loaded: " + (score.title || "(untitled)"));
             scoreRef = score;
             
-            // Reset Theory logic for new file
             activeChordName = ""; 
             extCycle = 0;
             baseChord = "";
@@ -686,13 +686,9 @@
             lastPaintedBarIdx = -2;
             repaintFretboard(0, null);
 
-            const track =
-                score.backingTrack?.rawAudioFile ? { data: score.backingTrack.rawAudioFile }
-                : score.audioTracks?.length ? score.audioTracks[0]
-                : null;
+            const track = score.backingTrack?.rawAudioFile ? { data: score.backingTrack.rawAudioFile } : score.audioTracks?.length ? score.audioTracks[0] : null;
 
             if (!track || !track.data) {
-                log("No embedded backing track — falling back to synth.");
                 externalMode = false;
                 document.getElementById('mode-pill').classList.remove('live');
                 document.getElementById('mode-pill').textContent = 'SYNTH';
@@ -721,9 +717,7 @@
                 document.getElementById('mode-pill').textContent = 'BACKING';
                 document.getElementById('btn-play').disabled = false;
                 document.getElementById('btn-play').textContent = "▶";
-            } catch (e) {
-                log("Backing track conversion failed: " + e.message);
-            }
+            } catch (e) { log("Backing track conversion failed: " + e.message); }
         });
 
         api.playerReady.on(() => {
@@ -772,8 +766,6 @@
                 externalAudio.currentTime = targetSec;
             }
         });
-
-        api.error.on((err) => log("alphaTab error: " + (err?.message || err)));
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -825,13 +817,6 @@
             api.pause();
         });
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // PLAY BUTTON
-    // ─────────────────────────────────────────────────────────────────────
-    document.getElementById('btn-play').onclick = () => {
-        startPlayback();
-    };
 
     // ─────────────────────────────────────────────────────────────────────
     // FILE OPEN
