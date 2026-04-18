@@ -1,16 +1,17 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Production Media Engine</title>
+    <title>AlphaTab Safari — External Media Engine</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
         body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
         #app { display: flex; flex-direction: column; flex: 1; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
         #app.ready { opacity: 1; pointer-events: all; }
-        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid #334155; flex-shrink: 0; }
+        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid #334155; flex-shrink: 0; gap: 10px; }
         #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
         #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
         #debug-container { height: 140px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
@@ -18,20 +19,24 @@
         .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn:disabled { opacity: 0.5; cursor: wait; }
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); }
+        .pill { font-size: 0.7rem; padding: 3px 8px; border-radius: 999px; background: #334155; color: #94a3b8; }
+        .pill.live { background: #14532d; color: #86efac; }
     </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
     <button class="btn" id="btn-initialize" style="padding: 15px 30px; font-size: 1.2rem;">BOOT ENGINE</button>
+    <div style="margin-top: 12px; font-size: 0.75rem; opacity: 0.6;">Required by Safari to unlock audio</div>
 </div>
 
 <div id="app">
     <div id="header">
         <div style="font-weight: 800; color: var(--accent);">AlphaTab Pro</div>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; padding-left: 10px;">Load GP8...</div>
+        <span id="mode-pill" class="pill">SYNTH</span>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; padding-left: 5px;">Load a .gp file…</div>
         <button class="btn" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open</button>
-        <input type="file" id="file-input" style="display:none" />
+        <input type="file" id="file-input" accept=".gp,.gpx,.gp3,.gp4,.gp5,.gp7" style="display:none" />
     </div>
     <div id="main"><div id="at-element"></div></div>
     <div id="footer">
@@ -45,123 +50,277 @@
     </div>
 </div>
 
-<div id="debug-container"><pre id="debug-log">Engine Offline.</pre></div>
+<!-- The hidden HTMLAudioElement that *actually* plays the WAV in Safari -->
+
+<audio id="external-audio" preload="auto" playsinline style="display:none"></audio>
+
+<div id="debug-container"><pre id="debug-log">Engine offline.</pre></div>
 
 <script>
-    const log = (m) => { const l = document.getElementById('debug-log'); l.innerText += "\n> " + m; l.scrollTop = l.scrollHeight; };
+    const log = (m) => {
+        const l = document.getElementById('debug-log');
+        l.innerText += "\n> " + m;
+        l.scrollTop = l.scrollHeight;
+    };
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
-    
-    let api, audioCtx;
-    let currentWavUrl = null;
 
-    // --- 1. BOOT PHASE (Gesture Required) ---
-    document.getElementById('btn-initialize').onclick = async function() {
+    let api, audioCtx;
+    let externalAudio;          // the <audio> tag that plays the WAV
+    let currentWavUrl = null;
+    let positionTimer = 0;
+    let handlerWired = false;   // we only attach the IExternalMediaHandler once
+    let externalMode = false;   // flips true once a backing track is bound
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PHASE A — BOOT (must happen inside a user gesture for Safari)
+    // ─────────────────────────────────────────────────────────────────────
+    document.getElementById('btn-initialize').onclick = async function () {
         this.disabled = true;
-        log("Initial Gesture Received. Building Audio Graph...");
-        
-        // Persistent AudioContext
+        log("Boot gesture received.");
+
+        externalAudio = document.getElementById('external-audio');
+
+        // Persistent AudioContext — used ONLY for decoding OGG → PCM.
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         await audioCtx.resume();
-        
+        log("AudioContext: " + audioCtx.state);
+
+        // Pre-touch the <audio> element inside the gesture so Safari trusts it
+        // when we later swap its src and call .play() from another gesture.
+        externalAudio.src = SILENT_WAV;
+        try {
+            await externalAudio.play();
+            externalAudio.pause();
+            externalAudio.currentTime = 0;
+            log("Audio element pre-warmed.");
+        } catch (e) {
+            log("Audio pre-warm failed (non-fatal): " + e.message);
+        }
+
+        // ── Init alphaTab in EXTERNAL MEDIA mode ─────────────────────────
+        // We do NOT set a soundFont — synth path is unused when a backing
+        // track is bound. (alphaTab still loads it for fallback synth use
+        // on files without an audio track. Comment out if you don't want it.)
         api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
             core: { fontDirectory: CDN + 'font/' },
-            player: { 
-                enablePlayer: true, 
-                enableCursor: true, 
-                enableBackingTracks: true, 
-                soundFont: CDN + 'soundfont/sonivox.sf2' 
+            player: {
+                enablePlayer: true,
+                enableCursor: true,
+                enableUserInteraction: true,
+                soundFont: CDN + 'soundfont/sonivox.sf2',
+                playerMode: alphaTab.PlayerMode.EnabledExternalMedia
             }
         });
 
-        // --- 2. THE SINGLE-PASS INTERCEPTION ---
-        api.scoreLoaded.on(async (score) => {
-            if (!score.audioTracks || !score.audioTracks.length) return log("No backing track.");
-            
-            log("Score Loaded. Intercepting OGG data...");
-            const track = score.audioTracks[0];
-            const oggBuffer = track.data.buffer.slice(track.data.byteOffset, track.data.byteOffset + track.data.byteLength);
-
-            try {
-                // Async processing outside the gesture loop
-                const decoded = await audioCtx.decodeAudioData(oggBuffer);
-                const wavBlob = audioBufferToWavBlob(decoded);
-                
-                if (currentWavUrl) URL.revokeObjectURL(currentWavUrl);
-                currentWavUrl = URL.createObjectURL(wavBlob);
-
-                log("Injecting WAV and Finalizing Sync Map...");
-                api.settings.player.backingTrack = currentWavUrl;
-                
-                // Declare settings change BEFORE playerReady finalization
-                api.updateSettings(); 
-            } catch (e) { log("Conversion failed: " + e.message); }
-        });
-
-        api.playerReady.on(() => {
-            log("Player Engine Finalized.");
-            const btn = document.getElementById('btn-play');
-            btn.disabled = false;
-            btn.innerText = "▶";
-        });
+        wireApiEvents();
 
         document.getElementById('startup-screen').style.display = 'none';
         document.getElementById('app').classList.add('ready');
-        log("Engine Online. Context state: " + audioCtx.state);
+        log("Engine online.");
     };
 
-    // --- 3. GESTURE-SAFE PLAYBACK (Strictly Synchronous) ---
-    document.getElementById('btn-play').onclick = () => {
-        log("Play Request. Handshaking graph...");
-        
-        // Ensure graph is active (sync call)
-        if (audioCtx.state !== 'running') audioCtx.resume();
-        if (api.player?.synth?.audioContext?.state !== 'running') {
-            api.player.synth.audioContext.resume();
-        }
+    // ─────────────────────────────────────────────────────────────────────
+    // PHASE B — On every score load: decode OGG → WAV, swap audio src
+    // ─────────────────────────────────────────────────────────────────────
+    function wireApiEvents() {
 
+        api.scoreLoaded.on(async (score) => {
+            log("Score loaded: " + (score.title || "(untitled)"));
+
+            // alphaTab 1.8: backing track lives on score.backingTrack OR
+            // score.audioTracks[0] depending on file. Try both.
+            const track =
+                score.backingTrack?.rawAudioFile ? { data: score.backingTrack.rawAudioFile }
+                : score.audioTracks?.length ? score.audioTracks[0]
+                : null;
+
+            if (!track || !track.data) {
+                log("No embedded backing track — falling back to synth.");
+                externalMode = false;
+                document.getElementById('mode-pill').classList.remove('live');
+                document.getElementById('mode-pill').textContent = 'SYNTH';
+                // For synth fallback we'd need PlayerMode.EnabledAutomatic.
+                // Keeping ExternalMedia means synth is silent here. Adjust
+                // upstream if you also want synth playback for non-GP8 files.
+                return;
+            }
+
+            try {
+                log("Decoding OGG (" + track.data.byteLength + " bytes)…");
+                // decodeAudioData consumes the buffer — pass a copy.
+                const oggCopy = track.data.buffer.slice(
+                    track.data.byteOffset,
+                    track.data.byteOffset + track.data.byteLength
+                );
+                const decoded = await audioCtx.decodeAudioData(oggCopy);
+
+                log("Encoding WAV (" + decoded.duration.toFixed(2) + "s)…");
+                const wavBlob = audioBufferToWavBlob(decoded);
+
+                if (currentWavUrl) URL.revokeObjectURL(currentWavUrl);
+                currentWavUrl = URL.createObjectURL(wavBlob);
+
+                // Swap the <audio> source and wait for metadata so duration
+                // is valid before alphaTab queries it via the handler.
+                externalAudio.src = currentWavUrl;
+                await new Promise((res, rej) => {
+                    externalAudio.addEventListener('loadedmetadata', res, { once: true });
+                    externalAudio.addEventListener('error', () => rej(new Error("audio load error")), { once: true });
+                });
+                log("WAV loaded. Duration: " + externalAudio.duration.toFixed(2) + "s");
+
+                externalMode = true;
+                document.getElementById('mode-pill').classList.add('live');
+                document.getElementById('mode-pill').textContent = 'BACKING';
+                document.getElementById('btn-play').disabled = false;
+                document.getElementById('btn-play').textContent = "▶";
+            } catch (e) {
+                log("Backing track conversion failed: " + e.message);
+            }
+        });
+
+        api.playerReady.on(() => {
+            log("Player ready.");
+            // Wire the external media handler exactly once.
+            if (!handlerWired) {
+                attachExternalMediaHandler();
+                handlerWired = true;
+            }
+            document.getElementById('btn-play').disabled = false;
+        });
+
+        api.playerStateChanged.on((e) => {
+            // 1 = playing, 0 = paused (alphaTab.synth.PlayerState enum)
+            document.getElementById('btn-play').textContent = e.state === 1 ? '⏸' : '▶';
+        });
+
+        api.playerPositionChanged.on((e) => {
+            const cur = e.currentTime / 1000, tot = e.endTime / 1000;
+            const fmt = (s) => isNaN(s) ? "0:00" : Math.floor(s/60) + ":" + Math.floor(s%60).toString().padStart(2, '0');
+            document.getElementById('time').textContent = `${fmt(cur)} / ${fmt(tot)}`;
+            document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
+        });
+
+        api.error.on((err) => log("alphaTab error: " + (err?.message || err)));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PHASE C — Bridge alphaTab ↔ <audio> via IExternalMediaHandler
+    // ─────────────────────────────────────────────────────────────────────
+    function attachExternalMediaHandler() {
+        const handler = {
+            get backingTrackDuration() {
+                const d = externalAudio.duration;
+                return Number.isFinite(d) ? d * 1000 : 0;
+            },
+            get playbackRate() { return externalAudio.playbackRate; },
+            set playbackRate(v) { externalAudio.playbackRate = v; },
+            get masterVolume() { return externalAudio.volume; },
+            set masterVolume(v) { externalAudio.volume = v; },
+            seekTo(timeMs) {
+                externalAudio.currentTime = (timeMs * externalAudio.playbackRate) / 1000;
+            },
+            play() {
+                // CRITICAL: this must run synchronously inside the play
+                // button's gesture chain for Safari to permit it.
+                externalAudio.play().catch(e => log("audio.play() rejected: " + e.message));
+            },
+            pause() { externalAudio.pause(); }
+        };
+
+        const output = api.player.output;
+        if (!output) { log("No external media output available."); return; }
+        output.handler = handler;
+        log("External media handler attached.");
+
+        // Feed position back to alphaTab so the cursor tracks the audio.
+        const onTimeUpdate = () => {
+            output.updatePosition((externalAudio.currentTime / externalAudio.playbackRate) * 1000);
+        };
+        externalAudio.addEventListener('timeupdate', onTimeUpdate);
+        externalAudio.addEventListener('seeked', onTimeUpdate);
+        externalAudio.addEventListener('play', () => {
+            clearInterval(positionTimer);
+            positionTimer = setInterval(onTimeUpdate, 50);
+        });
+        externalAudio.addEventListener('pause', () => clearInterval(positionTimer));
+        externalAudio.addEventListener('ended', () => {
+            clearInterval(positionTimer);
+            api.pause();
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PLAY BUTTON — strictly synchronous gesture chain
+    // ─────────────────────────────────────────────────────────────────────
+    document.getElementById('btn-play').onclick = () => {
+        if (audioCtx.state !== 'running') audioCtx.resume();
+        // In external-media mode, api.playPause() will synchronously call
+        // handler.play() / handler.pause() which calls externalAudio.play().
+        // Because we're still inside this click handler, Safari accepts it.
         api.playPause();
     };
 
-    // --- 4. WAV ENCODER ---
-    function audioBufferToWavBlob(buffer) {
-        const numOfChan = buffer.numberOfChannels, length = buffer.length * numOfChan * 2 + 44;
-        const out = new ArrayBuffer(length), view = new DataView(out);
-        let pos = 0;
-        const set16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
-        const set32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
-        set32(0x46464952); set32(length - 8); set32(0x45564157); set32(0x20746d66);
-        set32(16); set16(1); set16(numOfChan); set32(buffer.sampleRate);
-        set32(buffer.sampleRate * 2 * numOfChan); set16(numOfChan * 2); set16(16);
-        set32(0x61746164); set32(length - pos - 4);
-        for(let i = 0; i < buffer.length; i++) {
-            for(let c = 0; c < numOfChan; c++) {
-                let s = Math.max(-1, Math.min(1, buffer.getChannelData(c)[i]));
-                view.setInt16(pos, s < 0 ? s * 32768 : s * 32767, true); pos += 2;
-            }
-        }
-        return new Blob([out], {type: "audio/wav"});
-    }
-
-    // File Input Wrapper
+    // ─────────────────────────────────────────────────────────────────────
+    // FILE OPEN
+    // ─────────────────────────────────────────────────────────────────────
     document.getElementById('file-input').onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        document.getElementById('song-info').innerText = file.name;
+        document.getElementById('song-info').textContent = file.name;
         document.getElementById('btn-play').disabled = true;
-        document.getElementById('btn-play').innerText = "⏳";
+        document.getElementById('btn-play').textContent = "⏳";
+        externalAudio.pause();
+        externalAudio.removeAttribute('src');
+        externalAudio.load();
+
         const reader = new FileReader();
-        reader.onload = (args) => api.load(args.target.result);
+        reader.onload = (ev) => api.load(ev.target.result);
         reader.readAsArrayBuffer(file);
     };
 
-    // Standard UI Listeners
-    api?.playerStateChanged?.on(e => { document.getElementById('btn-play').innerText = e.state === 1 ? '⏸' : '▶'; });
-    api?.playerPositionChanged?.on(e => {
-        const cur = e.currentTime / 1000, tot = e.endTime / 1000;
-        const fmt = (s) => isNaN(s) ? "0:00" : Math.floor(s/60) + ":" + (Math.floor(s%60)).toString().padStart(2, '0');
-        document.getElementById('time').innerText = `${fmt(cur)} / ${fmt(tot)}`;
-        document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
-    });
+    // ─────────────────────────────────────────────────────────────────────
+    // WAV ENCODER (16-bit PCM, interleaved, little-endian)
+    // ─────────────────────────────────────────────────────────────────────
+    function audioBufferToWavBlob(buffer) {
+        const numCh = buffer.numberOfChannels;
+        const length = buffer.length * numCh * 2 + 44;
+        const out = new ArrayBuffer(length);
+        const view = new DataView(out);
+        let pos = 0;
+        const set16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
+        const set32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
+        set32(0x46464952);              // "RIFF"
+        set32(length - 8);
+        set32(0x45564157);              // "WAVE"
+        set32(0x20746d66);              // "fmt "
+        set32(16);
+        set16(1);                       // PCM
+        set16(numCh);
+        set32(buffer.sampleRate);
+        set32(buffer.sampleRate * 2 * numCh);
+        set16(numCh * 2);
+        set16(16);
+        set32(0x61746164);              // "data"
+        set32(length - pos - 4);
+
+        const channels = [];
+        for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+        for (let i = 0; i < buffer.length; i++) {
+            for (let c = 0; c < numCh; c++) {
+                let s = Math.max(-1, Math.min(1, channels[c][i]));
+                view.setInt16(pos, s < 0 ? s * 32768 : s * 32767, true);
+                pos += 2;
+            }
+        }
+        return new Blob([out], { type: "audio/wav" });
+    }
+
+    // 1-frame silent 8 kHz mono WAV — used to pre-warm the <audio> element
+    // inside the boot gesture so Safari trusts later src swaps + play() calls.
+    const SILENT_WAV =
+        "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 </script>
+
 </body>
 </html>
