@@ -494,6 +494,12 @@
   // (duration is NaN until then, which would make the mapping math
   // blow up and put the cursor in the wrong bar at the very start).
   let iosDurationFallbackMs = 0;
+  // First GP sync point's audio offset (ms). We clamp reported audio
+  // time to at least this value so the cursor sits still on bar 1
+  // during the MP3's pre-roll silence instead of being extrapolated
+  // backward into a negative score tick (which AlphaTab renders as a
+  // random wrong bar).
+  let iosFirstSyncMs = 0;
 
   if (isIOS) {
     iosAudio = document.createElement('audio');
@@ -584,20 +590,25 @@
     const pushPosition = () => {
       // readyState < HAVE_METADATA (1) → audio.duration is still NaN,
       // so AlphaTab's mapping would divide by a bogus denominator.
-      // Wait until metadata has arrived before reporting positions.
       if (!iosAudio || iosAudio.readyState < 1) return;
       const output = api.player && api.player.output;
-      if (output && typeof output.updatePosition === 'function') {
-        output.updatePosition((iosAudio.currentTime || 0) * 1000);
-      }
+      if (!output || typeof output.updatePosition !== 'function') return;
+      // Clamp to the first sync point's audio offset so we never
+      // ask AlphaTab to interpolate backward (cursor stays on bar 1
+      // through the pre-roll silence).
+      const raw    = (iosAudio.currentTime || 0) * 1000;
+      const pushMs = Math.max(raw, iosFirstSyncMs);
+      output.updatePosition(pushMs);
     };
+    // Only push while the audio is actually playing. Pushing from a
+    // seeked event or before playback starts would feed updatePosition(0)
+    // into AlphaTab and latch a wrong bar (assigning src + load() emits
+    // a seeked to currentTime=0, which was the culprit on first load).
     const pushPositionLoop = () => {
       if (iosAudio && !iosAudio.paused) pushPosition();
       requestAnimationFrame(pushPositionLoop);
     };
     requestAnimationFrame(pushPositionLoop);
-    // Seeks happen while paused — push once so the cursor snaps.
-    iosAudio.addEventListener('seeked', pushPosition);
   }
 
     
@@ -681,6 +692,9 @@
     const bt    = score.backingTrack;
     const hasBt = !!(bt && bt.rawAudioFile && bt.rawAudioFile.length);
     const btKB  = hasBt ? Math.round(bt.rawAudioFile.length / 1024) : 0;
+
+    // Cache the first sync point's audio offset for the iOS clamp.
+    iosFirstSyncMs = syncPoints.length > 0 ? (syncPoints[0].ms || 0) : 0;
 
     let diag;
     if (!hasBt) {
