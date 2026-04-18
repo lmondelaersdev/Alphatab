@@ -3,27 +3,36 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Native Automatic Sync</title>
+    <title>AlphaTab Safari - Brute Force Play</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
         body { height: 100dvh; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
+        
         #app { display: flex; flex-direction: column; height: 100%; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
         #app.ready { opacity: 1; pointer-events: all; }
+        
         #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; border-bottom: 1px solid #334155; }
-        #main { flex: 1; overflow-y: auto; background: #fff; }
+        #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
         #footer { height: 80px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; }
+        
         .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: var(--bg); text-align: center; }
-        #debug-log { font-size: 10px; color: #94a3b8; margin-top: 15px; font-family: monospace; width: 85%; text-align: left; background: #000; padding: 10px; border-radius: 5px; height: 60px; overflow-y: auto; }
+        
+        /* INCREASED DEBUG LOG SIZE TO SEE ERRORS */
+        #debug-log { font-size: 11px; color: #fbbf24; margin-top: 15px; font-family: monospace; width: 90%; text-align: left; background: #000; padding: 10px; border-radius: 5px; height: 120px; overflow-y: auto; }
+
+        .at-cursor-bar { background: rgba(233, 69, 96, 0.15) !important; }
+        .at-cursor-beat { background: #e94560 !important; width: 3px !important; }
     </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
-    <button class="btn" id="btn-initialize">INITIALIZE ALPHATAB</button>
-    <div id="debug-log">Waiting to boot...</div>
+    <button class="btn" id="btn-initialize">1. BOOT ENGINE</button>
+    <div id="debug-log">Log initialized...</div>
 </div>
 
 <div id="app">
@@ -37,7 +46,7 @@
     <div id="main"><div id="at-element"></div></div>
 
     <div id="footer">
-        <button class="btn" id="btn-play" disabled style="width: 60px; height: 50px; font-size: 1.5rem; background: #475569;">⏳</button>
+        <button class="btn" id="btn-play" style="width: 60px; height: 50px; font-size: 1.5rem; background: #475569;">▶</button>
         <div style="flex:1;">
             <div id="time" style="font-size: 0.8rem; font-family: monospace; color: #94a3b8; margin-bottom: 4px;">0:00 / 0:00</div>
             <div style="height: 6px; background: #334155; border-radius: 3px; overflow: hidden;">
@@ -48,7 +57,13 @@
 </div>
 
 <script>
-    const log = (msg) => { const lb = document.getElementById('debug-log'); lb.innerText += "\n> " + msg; lb.scrollTop = lb.scrollHeight; };
+    const logBox = document.getElementById('debug-log');
+    const log = (msg) => { 
+        console.log(msg); // Also logs to browser console
+        logBox.innerText += "\n> " + msg; 
+        logBox.scrollTop = logBox.scrollHeight; 
+    };
+    
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     let api = null;
 
@@ -56,72 +71,89 @@
         this.style.display = 'none';
         log("Booting API...");
         
-        // 1. Standard API Initialization
-        api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
-            core: { fontDirectory: CDN + 'font/', engine: 'svg' },
-            player: { 
-                enablePlayer: true, 
-                enableUserInteraction: true, // Crucial for Native Safari behavior
-                soundFont: CDN + 'soundfont/mscore.sf2' 
-            }
-        });
+        try {
+            api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
+                core: { 
+                    fontDirectory: CDN + 'font/', 
+                    engine: 'svg' 
+                },
+                player: { 
+                    enablePlayer: true, 
+                    enableCursor: true,          
+                    enableBackingTracks: true,   
+                    soundFont: CDN + 'soundfont/mscore.sf2' 
+                }
+            });
 
-        api.renderFinished.on(() => {
-            document.getElementById('startup-screen').style.display = 'none';
-            document.getElementById('app').classList.add('ready');
-            log("UI Ready.");
-        });
+            api.renderFinished.on(() => {
+                document.getElementById('startup-screen').style.display = 'none';
+                document.getElementById('app').classList.add('ready');
+                log("UI Ready.");
+            });
 
-        setupControls();
+            setupControls();
+
+        } catch (e) { log("CRASH: " + e.message); }
     };
 
     function setupControls() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
 
-        // 2. Load the File
         fileInput.onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
             
-            // Reset UI for new file
             document.getElementById('song-info').innerText = file.name;
-            btnPlay.disabled = true;
-            btnPlay.innerText = "⏳";
             btnPlay.style.background = "#475569";
             document.getElementById('prog-fill').style.width = '0%';
             document.getElementById('time').innerText = '0:00 / 0:00';
 
             const reader = new FileReader();
             reader.onload = (args) => {
-                log("Parsing GP file...");
+                log("Parsing file... " + file.name);
                 api.load(args.target.result);
             };
             reader.readAsArrayBuffer(file);
         };
 
-        // 3. WAIT FOR ALPHATAB TO EXTRACT/DECODE THE AUDIO
         api.playerReady.on(() => {
-            log("Audio Extracted & Engine Ready!");
-            
-            // Now it is safe to allow user interaction
-            btnPlay.disabled = false;
-            btnPlay.innerText = "▶";
+            log("AlphaTab Engine reports: Ready for audio!");
             btnPlay.style.background = "var(--accent)";
         });
 
-        // 4. Clean Click Handler
-        btnPlay.onclick = () => {
-            // Because enableUserInteraction is true, and we waited for playerReady,
-            // calling playPause inside this physical click event allows AlphaTab 
-            // to natively resume its own AudioContext in Safari.
-            if(api.isReadyForPlayback) {
+        // --- BRUTE FORCE PLAY BUTTON ---
+        btnPlay.onclick = async () => {
+            log("--- PLAY CLICKED ---");
+            
+            try {
+                // 1. Force WebAudio Unlock
+                if (api.player?.synth?.audioContext) {
+                    if (api.player.synth.audioContext.state !== 'running') {
+                        log("Resuming AudioContext...");
+                        await api.player.synth.audioContext.resume();
+                        log("AudioContext State: " + api.player.synth.audioContext.state);
+                    } else {
+                        log("AudioContext already running.");
+                    }
+                } else {
+                    log("Warning: No AudioContext found.");
+                }
+
+                // 2. Check Readiness
+                log("isReadyForPlayback: " + api.isReadyForPlayback);
+
+                // 3. Force Play regardless of readiness
+                log("Executing api.playPause()...");
                 api.playPause();
+
+            } catch (err) {
+                log("PLAY ERROR: " + err.message);
             }
         };
 
-        // UI Updates
         api.playerStateChanged.on(e => {
+            log("State changed to: " + e.state + " (0=Paused, 1=Playing)");
             btnPlay.innerText = (e.state === 1) ? '⏸' : '▶';
         });
 
