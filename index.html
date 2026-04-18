@@ -8,127 +8,143 @@
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
         body { height: 100dvh; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
-        #app { display: flex; flex-direction: column; height: 100%; opacity: 0.3; pointer-events: none; transition: opacity 0.5s; }
-        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; }
-        #main { flex: 1; overflow-y: auto; background: #fff; }
+        #app { display: flex; flex-direction: column; height: 100%; opacity: 0.2; pointer-events: none; transition: opacity 0.5s; }
+        #app.ready { opacity: 1; pointer-events: all; }
+        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; border-bottom: 1px solid #334155; }
+        #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
         #footer { height: 75px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 12px; }
         .btn { background: var(--accent); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-secondary { background: #475569; }
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; background: var(--bg); text-align: center; }
-        #debug-log { font-size: 10px; color: #94a3b8; margin-top: 20px; font-family: monospace; width: 90%; text-align: left; background: #000; padding: 10px; border-radius: 5px; }
+        #debug-log { font-size: 10px; color: #94a3b8; margin-top: 20px; font-family: monospace; width: 85%; text-align: left; background: #000; padding: 10px; border-radius: 5px; max-height: 120px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
-    <div style="font-size: 3rem;">🛠️</div>
-    <h3>Stage 1: Render Engine</h3>
-    <button class="btn" id="btn-start">INITIALIZE NOTATION</button>
-    <div id="debug-log">Ready...</div>
+    <div style="font-size: 3rem; margin-bottom: 10px;">🎸</div>
+    <h2>AlphaTab Pro</h2>
+    <button class="btn" id="btn-start" style="padding: 15px 30px;">INITIALIZE ENGINE</button>
+    <div id="debug-log">Status: Ready.</div>
 </div>
 
 <div id="app">
     <div id="header">
         <div style="font-weight: 800; color: var(--accent);">AlphaTab</div>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7;">1. Load File -> 2. Enable Sync</div>
-        <button class="btn" style="padding: 5px 10px;" onclick="document.getElementById('file-input').click()">Open GP File</button>
-        <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">No file loaded</div>
+        
+        <button class="btn btn-secondary" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open GP File</button>
+        <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx,.gtp,application/octet-stream" />
     </div>
-    <div id="main"><div id="at-element"></div></div>
+
+    <div id="main">
+        <div id="at-element"></div>
+    </div>
+
     <div id="footer">
-        <button class="btn" id="btn-sync" style="background: #22c55e;">ENABLE AUDIO SYNC</button>
-        <button class="btn" id="btn-play" style="display:none; width: 50px;">▶</button>
-        <div id="time" style="font-size: 0.8rem; min-width: 80px;">0:00/0:00</div>
-        <div style="flex:1; height: 4px; background: #334155; border-radius: 2px; overflow: hidden;">
-            <div id="prog-fill" style="height: 100%; background: var(--accent); width: 0%;"></div>
+        <button class="btn" id="btn-sync" style="background: #22c55e; width: 100%;">STEP 2: ENABLE AUDIO SYNC</button>
+        <button class="btn" id="btn-play" style="display:none; width: 60px; font-size: 1.2rem;">▶</button>
+        <div id="time-display" style="display:none; flex:1; align-items: center; gap: 10px;">
+            <div id="time" style="font-size: 0.8rem; min-width: 70px; font-family: monospace;">0:00/0:00</div>
+            <div style="flex:1; height: 6px; background: #334155; border-radius: 3px; overflow: hidden;">
+                <div id="prog-fill" style="height: 100%; background: var(--accent); width: 0%;"></div>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-    const log = (msg) => { document.getElementById('debug-log').innerText += "\n> " + msg; };
-    const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
+    const log = (msg) => { 
+        const logBox = document.getElementById('debug-log');
+        logBox.innerText += "\n> " + msg; 
+        logBox.scrollTop = logBox.scrollHeight;
+    };
     
+    const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     let api = null;
 
-    // STAGE 1: Initialize just the renderer
+    // STAGE 1: Engine Boot
     document.getElementById('btn-start').addEventListener('click', function() {
         this.style.display = 'none';
-        log("Booting Renderer (No Audio)...");
+        log("Booting SVG Render Engine...");
 
         try {
             const element = document.getElementById('at-element');
             api = new alphaTab.AlphaTabApi(element, {
                 core: { 
                     fontDirectory: CDN + 'font/',
-                    engine: 'svg' // SVG is safer for Safari
+                    engine: 'svg' 
                 },
-                player: { enablePlayer: false } // DISABLE player to prevent initialization hang
+                player: { enablePlayer: false }
             });
 
             api.renderFinished.on(() => {
-                log("Notation Rendered.");
+                log("Notation Engine Ready.");
                 document.getElementById('startup-screen').style.display = 'none';
-                document.getElementById('app').style.opacity = '1';
-                document.getElementById('app').style.pointerEvents = 'all';
+                document.getElementById('app').classList.add('ready');
             });
 
-            // Handle File Loading
-            document.getElementById('file-input').addEventListener('change', e => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (args) => api.load(args.target.result);
-                reader.readAsArrayBuffer(file);
-            });
-
+            initFileLoader();
         } catch (e) {
-            log("Stage 1 Error: " + e.message);
+            log("Error: " + e.message);
         }
     });
 
-    // STAGE 2: Inject the Player only when requested
+    function initFileLoader() {
+        const fileInput = document.getElementById('file-input');
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            log("Attempting to load: " + file.name);
+            document.getElementById('song-info').innerText = file.name;
+            
+            const reader = new FileReader();
+            reader.onload = (args) => {
+                try {
+                    api.load(args.target.result);
+                    log("File loaded successfully.");
+                } catch(err) {
+                    log("AlphaTab Load Error: " + err.message);
+                }
+            };
+            reader.onerror = () => log("FileReader Error: Could not read file.");
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    // STAGE 2: Audio Sync
     document.getElementById('btn-sync').addEventListener('click', async function() {
         const btn = this;
-        btn.innerText = "Syncing...";
-        log("Waking Audio Context...");
-
+        btn.innerText = "Connecting Audio...";
+        
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             const actx = new AudioContext();
             await actx.resume();
 
-            log("Injecting Player Engine...");
-            // Update settings on the fly
             api.settings.player.enablePlayer = true;
             api.settings.player.enableBackingTracks = true;
             api.settings.player.soundFont = CDN + 'soundfont/mscore.sf2';
-            
-            // This re-initializes the internal player
             api.updateSettings();
 
             api.playerReady.on(() => {
-                log("Audio Sync Ready!");
+                log("Audio System Live!");
                 btn.style.display = 'none';
                 document.getElementById('btn-play').style.display = 'block';
-                setupPlayerEvents();
+                document.getElementById('time-display').style.display = 'flex';
+                setupPlayerControls();
             });
-
         } catch (e) {
-            log("Stage 2 Error: " + e.message);
+            log("Audio Unlock Error: " + e.message);
         }
     });
 
-    function setupPlayerEvents() {
+    function setupPlayerControls() {
         const btnPlay = document.getElementById('btn-play');
-        
         btnPlay.addEventListener('click', () => {
-            if (api.player?.synth?.audioContext?.state !== 'running') {
+            if (api.player?.synth?.audioContext?.state === 'suspended') {
                 api.player.synth.audioContext.resume();
-            }
-            if (api.player.backingTrackAudio) {
-                api.player.backingTrackAudio.play().then(() => {
-                    if(api.player.state !== 1) api.player.backingTrackAudio.pause();
-                });
             }
             api.playPause();
         });
@@ -140,11 +156,12 @@
         api.playerPositionChanged.on(e => {
             const current = e.currentTime / 1000;
             const total = e.endTime / 1000;
-            const fmt = (s) => Math.floor(s/60 || 0) + ":" + (Math.floor(s%60 || 0)).toString().padStart(2, '0');
+            const fmt = (s) => isNaN(s) ? "0:00" : Math.floor(s/60) + ":" + (Math.floor(s%60)).toString().padStart(2, '0');
             document.getElementById('time').innerText = `${fmt(current)}/${fmt(total)}`;
-            document.getElementById('prog-fill').style.width = (e.currentTime / e.endTime * 100) + '%';
+            document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
         });
     }
 </script>
+
 </body>
 </html>
