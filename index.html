@@ -13,20 +13,23 @@
         #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; border-bottom: 1px solid #334155; }
         #main { flex: 1; overflow-y: auto; background: #fff; }
         #footer { height: 80px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; }
-        .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: var(--bg); }
+        .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: var(--bg); text-align: center; }
+        #debug-log { font-size: 10px; color: #94a3b8; margin-top: 15px; font-family: monospace; width: 85%; text-align: left; background: #000; padding: 10px; border-radius: 5px; height: 60px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
     <button class="btn" id="btn-initialize">INITIALIZE ALPHATAB</button>
+    <div id="debug-log">Waiting to boot...</div>
 </div>
 
 <div id="app">
     <div id="header">
-        <div style="font-weight: 800; color: var(--accent);">AlphaTab Pro</div>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7;">Load your GP8 file</div>
+        <div style="font-weight: 800; color: var(--accent);">AlphaTab</div>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7;">Load GP8 File</div>
         <button class="btn" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open File</button>
         <input type="file" id="file-input" style="display:none" accept=".gp,.gpx,.gp5,*/*" />
     </div>
@@ -34,7 +37,7 @@
     <div id="main"><div id="at-element"></div></div>
 
     <div id="footer">
-        <button class="btn" id="btn-play" style="width: 60px; height: 50px; font-size: 1.5rem;">▶</button>
+        <button class="btn" id="btn-play" disabled style="width: 60px; height: 50px; font-size: 1.5rem; background: #475569;">⏳</button>
         <div style="flex:1;">
             <div id="time" style="font-size: 0.8rem; font-family: monospace; color: #94a3b8; margin-bottom: 4px;">0:00 / 0:00</div>
             <div style="height: 6px; background: #334155; border-radius: 3px; overflow: hidden;">
@@ -45,18 +48,20 @@
 </div>
 
 <script>
+    const log = (msg) => { const lb = document.getElementById('debug-log'); lb.innerText += "\n> " + msg; lb.scrollTop = lb.scrollHeight; };
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     let api = null;
 
-    // --- INITIALIZE WITH NATIVE OPTION 3 (AUTOMATIC) ---
     document.getElementById('btn-initialize').onclick = function() {
         this.style.display = 'none';
+        log("Booting API...");
         
+        // 1. Standard API Initialization
         api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
             core: { fontDirectory: CDN + 'font/', engine: 'svg' },
             player: { 
                 enablePlayer: true, 
-                playerMode: 2, // 2 = PlayerMode.Automatic (Option 3)
+                enableUserInteraction: true, // Crucial for Native Safari behavior
                 soundFont: CDN + 'soundfont/mscore.sf2' 
             }
         });
@@ -64,6 +69,7 @@
         api.renderFinished.on(() => {
             document.getElementById('startup-screen').style.display = 'none';
             document.getElementById('app').classList.add('ready');
+            log("UI Ready.");
         });
 
         setupControls();
@@ -73,29 +79,48 @@
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
 
-        // File Loading
+        // 2. Load the File
         fileInput.onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            
+            // Reset UI for new file
             document.getElementById('song-info').innerText = file.name;
+            btnPlay.disabled = true;
+            btnPlay.innerText = "⏳";
+            btnPlay.style.background = "#475569";
+            document.getElementById('prog-fill').style.width = '0%';
+            document.getElementById('time').innerText = '0:00 / 0:00';
+
             const reader = new FileReader();
-            reader.onload = (args) => api.load(args.target.result);
+            reader.onload = (args) => {
+                log("Parsing GP file...");
+                api.load(args.target.result);
+            };
             reader.readAsArrayBuffer(file);
         };
 
-        // --- SAFARI UNLOCK (User Gesture) ---
-        btnPlay.onclick = async () => {
-            // Unlocks the WebAudio context used by the synth/backing track
-            if (api.player && api.player.synth && api.player.synth.audioContext) {
-                if (api.player.synth.audioContext.state !== 'running') {
-                    await api.player.synth.audioContext.resume();
-                }
-            }
+        // 3. WAIT FOR ALPHATAB TO EXTRACT/DECODE THE AUDIO
+        api.playerReady.on(() => {
+            log("Audio Extracted & Engine Ready!");
             
-            // Standard API call for Play/Pause
-            api.playPause();
+            // Now it is safe to allow user interaction
+            btnPlay.disabled = false;
+            btnPlay.innerText = "▶";
+            btnPlay.style.background = "var(--accent)";
+        });
+
+        // 4. Clean Click Handler
+        btnPlay.onclick = () => {
+            // Because enableUserInteraction is true, and we waited for playerReady,
+            // calling playPause inside this physical click event allows AlphaTab 
+            // to natively resume its own AudioContext in Safari.
+            if(api.isReadyForPlayback) {
+                api.playPause();
+            }
         };
 
+        // UI Updates
         api.playerStateChanged.on(e => {
             btnPlay.innerText = (e.state === 1) ? '⏸' : '▶';
         });
