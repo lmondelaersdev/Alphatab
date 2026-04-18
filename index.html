@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlphaTab Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.3.1/dist/alphaTab.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #16213e, #0f3460);
+      padding: 2rem;
+      text-align: center;
+      border-bottom: 1px solid #e94560;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+
+    header h1 span { color: #e94560; }
+
+    header p {
+      margin-top: 0.5rem;
+      color: #a0aec0;
+      font-size: 1rem;
+    }
+
+    main {
+      max-width: 960px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover { background: #c73652; }
+    button:disabled { background: #555; cursor: not-allowed; }
+
+    .speed-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-left: auto;
+      color: #a0aec0;
+      font-size: 0.85rem;
+    }
+
+    .speed-wrap input[type=range] { accent-color: #e94560; width: 90px; }
+
+    #speed-label { min-width: 3ch; text-align: right; color: #fff; font-weight: 600; }
+
+    .score-wrap {
+      background: #fff;
+      border-radius: 8px;
+      overflow-x: auto;
+      padding: 1rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    #alphatab { min-height: 200px; }
+
+    .info {
+      margin-top: 1.5rem;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-size: 0.85rem;
+      color: #a0aec0;
+      line-height: 1.6;
+    }
+
+    .info a { color: #e94560; text-decoration: none; }
+    .info a:hover { text-decoration: underline; }
+
+    .badge {
+      display: inline-block;
+      background: #0f3460;
+      border-radius: 4px;
+      padding: 0.1rem 0.5rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #7dd3fc;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Alpha<span>Tab</span> Demo</h1>
+    <p>Guitar tablature &amp; music notation rendered in the browser</p>
+  </header>
+
+  <main>
+    <div class="controls">
+      <button id="btn-play">&#9654; Play</button>
+      <button id="btn-stop">&#9632; Stop</button>
+      <div class="speed-wrap">
+        <span>Speed</span>
+        <input type="range" id="speed" min="25" max="200" value="100" step="5" />
+        <span id="speed-label">100%</span>
+      </div>
+    </div>
+
+    <div class="score-wrap">
+      <div id="alphatab"></div>
+    </div>
+
+    <div class="info">
+      This demo uses <a href="https://www.alphatab.net" target="_blank" rel="noopener">AlphaTab</a>
+      to render guitar tablature and standard notation entirely in the browser via the
+      <span class="badge">@coderline/alphatab</span> package.
+      The score above is written in <strong>AlphaTex</strong>, AlphaTab's plain-text notation format.
+      Playback is powered by the built-in Web Audio synthesizer.
+    </div>
+  </main>
+
+  <script>
+    const el = document.querySelector('#alphatab');
+
+    const api = new alphaTab.AlphaTabApi(el, {
+      core: {
+        tex: true,
+        fontDirectory: 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.3.1/dist/font/'
+      },
+      display: {
+        staveProfile: 'tab',
+        scale: 1.0
+      },
+      player: {
+        enablePlayer: true,
+        enableCursor: true,
+        soundFont: 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.3.1/dist/soundfont/sonivox.sf2',
+        scrollMode: alphaTab.ScrollMode.Continuous
+      }
+    });
+
+    // AlphaTex score: a simple 12-bar blues in E
+    const tex = `
+\\title "12-Bar Blues in E"
+\\subtitle "AlphaTab Demo"
+\\tempo 120
+\\instrument 25
+.
+\\tuning E4 B3 G3 D3 A2 E2
+\\staff{score}
+\\capo 0
+(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
+(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
+(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
+(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
+(2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 |
+(2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 |
+(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
+(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
+(2.3 2.2).4 4.2.8 (2.3 2.2).4 4.2.8 (2.3 2.2).4 4.2.8 (2.3 2.2).4 4.2.8 |
+(2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 (2.4 2.3).4 4.3.8 |
+(0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 (0.5 0.4).4 2.4.8 |
+(2.3 2.2).4 4.2.8 (2.4 2.3).4 4.3.8 0.5.2 r.4
+`;
+
+    api.tex(tex);
+
+    const btnPlay = document.getElementById('btn-play');
+    const btnStop = document.getElementById('btn-stop');
+    const speedSlider = document.getElementById('speed');
+    const speedLabel = document.getElementById('speed-label');
+
+    btnPlay.addEventListener('click', () => api.playPause());
+    btnStop.addEventListener('click', () => api.stop());
+
+    speedSlider.addEventListener('input', () => {
+      const v = parseInt(speedSlider.value, 10);
+      speedLabel.textContent = v + '%';
+      api.playbackSpeed = v / 100;
+    });
+
+    api.playerStateChanged.on(e => {
+      btnPlay.textContent = e.state === alphaTab.synth.PlayerState.Playing
+        ? '⏸ Pause'
+        : '▶ Play';
+    });
+  </script>
+</body>
+</html>
