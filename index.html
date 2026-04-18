@@ -21,614 +21,156 @@
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     html, body { height: 100%; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      font-size: 13px;
-    }
-
-    /* ═══════════ Layout ═══════════ */
-    #app { display: flex; flex-direction: column; height: 100dvh; } /* dvh = dynamic viewport height, perfect for iOS */
-
-
-    /* ═══════════ Header ═══════════ */
-    #header {
-      height: var(--header-h);
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      padding: 0 1rem;
-      gap: 0.6rem;
-      flex-shrink: 0;
-    }
-
-    #logo {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #fff;
-      margin-right: 0.5rem;
-    }
+    #app { display: flex; flex-direction: column; height: 100dvh; }
+    #header { height: var(--header-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 1rem; gap: 0.6rem; flex-shrink: 0; }
+    #logo { font-size: 1.1rem; font-weight: 700; color: #fff; margin-right: 0.5rem; }
     #logo em { color: var(--accent); font-style: normal; }
-
-    #song-info {
-      flex: 1;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      color: var(--muted);
-      font-size: 0.82rem;
-      padding: 0 0.5rem;
-    }
+    #song-info { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 0.82rem; padding: 0 0.5rem; }
     #song-info strong { color: var(--text); }
 
-    /* ═══════════ Body ═══════════ */
     #body { display: flex; flex: 1; overflow: hidden; }
-
-    /* ═══════════ Sidebar ═══════════ */
-    #sidebar {
-      width: var(--sidebar-w);
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-      overflow: hidden;
-    }
-
-    .sidebar-section {
-      border-bottom: 1px solid var(--border);
-      padding: 0.5rem 0.75rem;
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-    }
-
+    #sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+    .sidebar-section { border-bottom: 1px solid var(--border); padding: 0.5rem 0.75rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
     #track-list { flex: 1; overflow-y: auto; padding: 0.25rem 0; }
-
-    .track-item {
-      display: flex;
-      align-items: center;
-      padding: 0.45rem 0.75rem;
-      gap: 0.5rem;
-      border-radius: 5px;
-      margin: 1px 0.3rem;
-      cursor: default;
-    }
-
-    .track-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .track-name {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 0.82rem;
-    }
-
-    .t-btn {
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: 3px;
-      color: var(--muted);
-      font-size: 0.6rem;
-      font-weight: 700;
-      width: 18px; height: 18px;
-      line-height: 1;
-      cursor: pointer;
-      transition: all 0.12s;
-      flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-    }
+    .track-item { display: flex; align-items: center; padding: 0.45rem 0.75rem; gap: 0.5rem; border-radius: 5px; margin: 1px 0.3rem; cursor: default; }
+    .track-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .track-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
+    .t-btn { background: none; border: 1px solid var(--border); border-radius: 3px; color: var(--muted); font-size: 0.6rem; font-weight: 700; width: 18px; height: 18px; line-height: 1; cursor: pointer; transition: all 0.12s; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
     .t-btn:hover { border-color: var(--accent); color: var(--accent); }
     .t-btn.on   { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-    /* ═══════════ AlphaTab Cursor ═══════════ */
-.at-cursor-bar {
-  /* Highlights the entire current measure */
-  background: rgba(233, 69, 96, 0.15); 
-}
-
-.at-cursor-beat {
-  /* Highlights the exact beat/chord playing right now */
-  background: rgba(233, 69, 96, 0.75);
-  width: 3px;
-}
-
-.at-selection div {
-  /* Color when you drag to select a loop range */
-  background: rgba(64, 96, 255, 0.1);
-}
-
+    .at-cursor-bar { background: rgba(233, 69, 96, 0.15); }
+    .at-cursor-beat { background: rgba(233, 69, 96, 0.75); width: 3px; }
+    .at-selection div { background: rgba(64, 96, 255, 0.1); }
     
-    /* Settings section */
     #settings-panel { padding: 0.6rem 0.75rem; display: flex; flex-direction: column; gap: 0.55rem; }
-
-    .setting-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-    }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
     .setting-label { color: var(--muted); font-size: 0.78rem; }
-
-    select, .sel {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      color: var(--text);
-      padding: 0.2rem 0.4rem;
-      font-size: 0.78rem;
-      cursor: pointer;
-      height: 26px;
-    }
+    select, .sel { background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 0.2rem 0.4rem; font-size: 0.78rem; cursor: pointer; height: 26px; }
     select option { background: #1e293b; }
 
-    /* ═══════════ Viewport ═══════════ */
-    #viewport {
-      flex: 1;
-      overflow: auto;
-      background: #d1d5db;
-      position: relative;
-    }
-
+    #viewport { flex: 1; overflow: auto; background: #d1d5db; position: relative; }
     #at-element { background: #fff; }
 
-    /* ═══════════ Overlays ═══════════ */
-    .overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 20;
-    }
-
+    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; }
     #drop-overlay { background: rgba(15,23,42,0.94); }
     #drop-overlay.hidden { display: none; }
-
     #load-overlay { background: rgba(15,23,42,0.78); }
     #load-overlay.hidden { display: none; }
 
-    .drop-box {
-      border: 2px dashed var(--border);
-      border-radius: 14px;
-      padding: 3rem 3.5rem;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .drop-box:hover, .drop-box.drag-over {
-      border-color: var(--accent);
-      background: rgba(233,69,96,0.08);
-    }
-
+    .drop-box { border: 2px dashed var(--border); border-radius: 14px; padding: 3rem 3.5rem; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+    .drop-box:hover, .drop-box.drag-over { border-color: var(--accent); background: rgba(233,69,96,0.08); }
     .drop-icon { font-size: 3.5rem; margin-bottom: 1rem; opacity: 0.6; }
     .drop-title { font-size: 1.2rem; font-weight: 600; color: #fff; margin-bottom: 0.4rem; }
     .drop-ext { color: var(--muted); font-size: 0.83rem; margin-top: 0.5rem; }
 
-    .spinner {
-      width: 38px; height: 38px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.65s linear infinite;
-      margin-bottom: 0.75rem;
-    }
+    .spinner { width: 38px; height: 38px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.65s linear infinite; margin-bottom: 0.75rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ═══════════ Footer ═══════════ */
-    #footer {
-      height: var(--footer-h);
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      padding: 0 1rem;
-      gap: 0.55rem;
-      flex-shrink: 0;
-    }
-
-    /* ═══════════ Shared controls ═══════════ */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--surface2);
-      color: var(--text);
-      cursor: pointer;
-      font-size: 0.82rem;
-      transition: all 0.12s;
-      white-space: nowrap;
-    }
+    #footer { height: var(--footer-h); background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 1rem; gap: 0.55rem; flex-shrink: 0; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 0.82rem; transition: all 0.12s; white-space: nowrap; }
     .btn:hover { border-color: #64748b; background: #314060; }
     .btn.on    { background: var(--accent); border-color: var(--accent); color: #fff; }
     .btn.on:hover { background: var(--accent-dk); }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 0 0.9rem; height: 30px; }
     .btn.primary:hover { background: var(--accent-dk); }
-
     .icon-btn { width: 34px; height: 34px; font-size: 1rem; }
-
     .sep { width: 1px; height: 26px; background: var(--border); flex-shrink: 0; }
 
-    /* Progress */
     #time { font-family: monospace; font-size: 0.82rem; color: var(--muted); min-width: 10ch; text-align: center; }
+    #prog-wrap { flex: 1; height: 5px; background: var(--border); border-radius: 3px; position: relative; cursor: pointer; min-width: 60px; }
+    #prog-fill { height: 100%; background: var(--accent); border-radius: 3px; width: 0%; pointer-events: none; transition: width 0.08s linear; }
 
-    #prog-wrap {
-      flex: 1;
-      height: 5px;
-      background: var(--border);
-      border-radius: 3px;
-      position: relative;
-      cursor: pointer;
-      min-width: 60px;
-    }
-    #prog-fill {
-      height: 100%;
-      background: var(--accent);
-      border-radius: 3px;
-      width: 0%;
-      pointer-events: none;
-      transition: width 0.08s linear;
-    }
-
-    /* Sliders */
-    .sl-group {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      color: var(--muted);
-      font-size: 0.75rem;
-    }
+    .sl-group { display: flex; align-items: center; gap: 0.35rem; color: var(--muted); font-size: 0.75rem; }
     .sl-group input[type=range] { accent-color: var(--accent); width: 72px; cursor: pointer; }
     .sl-val { min-width: 3.2ch; color: var(--text); font-weight: 600; text-align: right; }
-
     #file-input { display: none; }
-
-    .empty-tracks {
-      padding: 1rem 0.75rem;
-      color: var(--muted);
-      font-size: 0.78rem;
-      text-align: center;
-      line-height: 1.5;
-    }
+    .empty-tracks { padding: 1rem 0.75rem; color: var(--muted); font-size: 0.78rem; text-align: center; line-height: 1.5; }
   </style>
 </head>
 <body>
 <input type="file" id="file-input" />
 
 <div id="app">
-
-  <!-- ═══ Header ═══ -->
   <div id="header">
     <div id="logo">Alpha<em>Tab</em> Player</div>
     <div id="song-info">No file loaded</div>
     <button class="btn primary" id="btn-open">&#128193; Open File</button>
   </div>
 
-  <!-- ═══ Body ═══ -->
   <div id="body">
-
-    <!-- Sidebar -->
     <div id="sidebar">
       <div class="sidebar-section">Tracks</div>
-      <div id="track-list">
-        <div class="empty-tracks">Open a Guitar Pro file<br>to see tracks</div>
-      </div>
-
+      <div id="track-list"><div class="empty-tracks">Open a Guitar Pro file<br>to see tracks</div></div>
       <div class="sidebar-section">Settings</div>
       <div id="settings-panel">
-        <div class="setting-row">
-          <span class="setting-label">Layout</span>
-          <select id="sel-layout">
-            <option value="0">Page</option>
-            <option value="1">Horizontal</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Notation</span>
-          <select id="sel-stave">
-            <option value="0">Default</option>
-            <option value="3">Score + Tab</option>
-            <option value="1">Score only</option>
-            <option value="2">Tab only</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Zoom</span>
-          <select id="sel-zoom">
-            <option value="0.5">50%</option>
-            <option value="0.75">75%</option>
-            <option value="1" selected>100%</option>
-            <option value="1.25">125%</option>
-            <option value="1.5">150%</option>
-            <option value="2">200%</option>
-          </select>
-        </div>
+        <div class="setting-row"><span class="setting-label">Layout</span><select id="sel-layout"><option value="0">Page</option><option value="1">Horizontal</option></select></div>
+        <div class="setting-row"><span class="setting-label">Notation</span><select id="sel-stave"><option value="0">Default</option><option value="3">Score + Tab</option><option value="1">Score only</option><option value="2">Tab only</option></select></div>
+        <div class="setting-row"><span class="setting-label">Zoom</span><select id="sel-zoom"><option value="0.5">50%</option><option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></div>
       </div>
     </div>
 
-    <!-- Viewport -->
     <div id="viewport">
-
-      <!-- Loading overlay -->
-      <div id="load-overlay" class="overlay hidden">
-        <div class="spinner"></div>
-        <div style="color:var(--muted)">Rendering…</div>
-      </div>
-
-      <!-- Drop / welcome overlay -->
+      <div id="load-overlay" class="overlay hidden"><div class="spinner"></div><div style="color:var(--muted)">Rendering…</div></div>
       <div id="drop-overlay" class="overlay">
         <div class="drop-box" id="drop-box">
           <div class="drop-icon">&#127928;</div>
           <div class="drop-title">Open a Guitar Pro file</div>
-          <div style="color:var(--muted);font-size:0.85rem;margin-top:0.3rem">
-            Drag &amp; drop here, or click to browse
-          </div>
+          <div style="color:var(--muted);font-size:0.85rem;margin-top:0.3rem">Drag &amp; drop here, or click to browse</div>
           <div class="drop-ext">.gp &nbsp;·&nbsp; .gp3 &nbsp;·&nbsp; .gp4 &nbsp;·&nbsp; .gp5 &nbsp;·&nbsp; .gpx</div>
         </div>
       </div>
-
-      <!-- AlphaTab target -->
       <div id="at-element"></div>
     </div>
-
   </div>
 
-  <!-- ═══ Footer ═══ -->
   <div id="footer">
-    <!-- Transport -->
     <button class="btn icon-btn" id="btn-play"  title="Play / Pause">&#9654;</button>
     <button class="btn icon-btn" id="btn-stop"  title="Stop">&#9632;</button>
-
     <div class="sep"></div>
-
-    <!-- Time & progress -->
     <div id="time">0:00 / 0:00</div>
-    <div id="prog-wrap" title="Progress">
-      <div id="prog-fill"></div>
-    </div>
-
+    <div id="prog-wrap" title="Progress"><div id="prog-fill"></div></div>
     <div class="sep"></div>
-
-    <!-- Toggles -->
     <button class="btn icon-btn" id="btn-loop"    title="Loop">&#8635;</button>
     <button class="btn icon-btn" id="btn-metro"   title="Metronome">&#119070;</button>
     <button class="btn icon-btn" id="btn-countin" title="Count-in">1&#818;2&#818;</button>
-
     <div class="sep"></div>
-
-    <!-- Master volume -->
-    <div class="sl-group" title="Master volume">
-      <span>&#128266;</span>
-      <input type="range" id="sl-vol" min="0" max="150" value="100" step="5" />
-      <span class="sl-val" id="vol-val">100%</span>
-    </div>
-
-    <!-- Speed -->
-    <div class="sl-group" title="Playback speed">
-      <span>Speed</span>
-      <input type="range" id="sl-speed" min="25" max="200" value="100" step="5" />
-      <span class="sl-val" id="speed-val">100%</span>
-    </div>
+    <div class="sl-group" title="Master volume"><span>&#128266;</span><input type="range" id="sl-vol" min="0" max="150" value="100" step="5" /><span class="sl-val" id="vol-val">100%</span></div>
+    <div class="sl-group" title="Playback speed"><span>Speed</span><input type="range" id="sl-speed" min="25" max="200" value="100" step="5" /><span class="sl-val" id="speed-val">100%</span></div>
   </div>
-
-</div><!-- #app -->
+</div>
 
 <script>
   const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@latest/dist/';
-
-  /* ─── iOS / WebKit detection ───
-   * On iOS every browser (Safari, Chrome, Brave, Firefox…) is forced to use
-   * WebKit. WebKit blocks AlphaTab's internal <audio> element because its
-   * src (a blob: URL built off the worker-unzipped MP3 in the .gp file)
-   * is assigned asynchronously outside the original user gesture, so its
-   * .play() call is rejected. AlphaTab's cursor then waits for an audio
-   * event that never fires → playback hangs before bar 1.
-   *
-   * Fix: on iOS, switch AlphaTab to EnabledExternalMedia (playerMode 4).
-   * We own an <audio> element in the page, feed it the same backing-track
-   * bytes (score.backingTrack.rawAudioFile), and AlphaTab asks *us* to
-   * play/pause/seek. Because our Play button calls our audio element's
-   * .play() directly from inside the tap handler, iOS treats it as a
-   * user-initiated gesture and lets the blob source through.
-   */
-  const isIOS =
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    // iPadOS 13+ reports as Mac; detect via touch support
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-  const PLAYER_MODE_AUTOMATIC     = 1;
-  const PLAYER_MODE_BACKING_TRACK = 3;
-  const PLAYER_MODE_EXTERNAL      = 4;
 
   /* ─── AlphaTab init ─── */
   const atEl = document.getElementById('at-element');
 
   const api  = new alphaTab.AlphaTabApi(atEl, {
-    core: {
-      fontDirectory: CDN + 'font/'
-    },
-    display: {
-      layoutMode:   0,
-      staveProfile: 0,
-      scale:        1.0
-    },
+    core: { fontDirectory: CDN + 'font/' },
+    display: { layoutMode: 0, staveProfile: 0, scale: 1.0 },
     player: {
       enablePlayer:  true,
       enableCursor:  true,
       soundFont:     CDN + 'soundfont/sonivox.sf2',
-      playerMode:    isIOS ? PLAYER_MODE_EXTERNAL : PLAYER_MODE_BACKING_TRACK
+      playerMode:    3 // STRICT NATIVE BACKING TRACK MODE (Handles GP8 sync perfectly)
     }
   });
 
-  /* ─── iOS external-media pipeline ───
-   * One <audio> element, kept in the DOM across files, driven by the
-   * AlphaTab IExternalMediaHandler interface. The tap on our Play button
-   * is itself a user gesture — it calls AlphaTab, which synchronously
-   * calls handler.play(), which calls audio.play() — so iOS accepts it
-   * without any pre-priming dance (and an explicit priming call would
-   * race the tap's own playback and instantly pause the audio).
-   */
-  let iosAudio        = null;
-  let iosBlobUrl      = null;
-  let iosHandlerWired = false;
-  let iosPlaybackRate = 1;
-  let iosMasterVolume = 1;
-  // Duration-fallback in ms. Set from the score's MIDI duration on
-  // scoreLoaded so AlphaTab's sync-point interpolation has a non-zero
-  // denominator even before the <audio> element fires loadedmetadata
-  // (duration is NaN until then, which would make the mapping math
-  // blow up and put the cursor in the wrong bar at the very start).
-  let iosDurationFallbackMs = 0;
-  // First GP sync point's audio offset (ms). We clamp reported audio
-  // time to at least this value so the cursor sits still on bar 1
-  // during the MP3's pre-roll silence instead of being extrapolated
-  // backward into a negative score tick (which AlphaTab renders as a
-  // random wrong bar).
-  let iosFirstSyncMs = 0;
-
-  if (isIOS) {
-    iosAudio = document.createElement('audio');
-    iosAudio.preload = 'auto';
-    iosAudio.playsInline = true;
-    iosAudio.setAttribute('playsinline', '');
-    iosAudio.setAttribute('webkit-playsinline', '');
-    iosAudio.crossOrigin = 'anonymous';
-    iosAudio.style.display = 'none';
-    document.body.appendChild(iosAudio);
-  }
-
-  function setIosBackingTrack(bytes) {
-    if (!iosAudio || !bytes) return;
-    if (iosBlobUrl) {
-      URL.revokeObjectURL(iosBlobUrl);
-      iosBlobUrl = null;
-    }
-    // GP8 embeds MP3/OGG/WAV; audio/mpeg is the common case and
-    // browsers sniff the rest from the bytes regardless of the MIME.
-    const blob = new Blob([bytes], { type: 'audio/mpeg' });
-    iosBlobUrl = URL.createObjectURL(blob);
-    iosAudio.src = iosBlobUrl;
-    iosAudio.playbackRate = iosPlaybackRate;
-    iosAudio.volume = iosMasterVolume;
-    iosAudio.load();
-  }
-
-  /* IExternalMediaHandler implementation. AlphaTab calls these; we push
-   * the real <audio> element around. Position is reported back to the
-   * cursor via IExternalMediaSynthOutput.updatePosition().
-   */
-  const iosExternalMediaHandler = {
-    get backingTrackDuration() {
-      const d = iosAudio ? iosAudio.duration : NaN;
-      if (Number.isFinite(d) && d > 0) return d * 1000;
-      // Metadata not loaded yet. Fall back to the score's own duration
-      // so AlphaTab's audio->score interpolation stays well-defined.
-      return iosDurationFallbackMs || 1;
-    },
-    get playbackRate() { return iosPlaybackRate; },
-    set playbackRate(v) {
-      iosPlaybackRate = v;
-      if (iosAudio) {
-        try { iosAudio.playbackRate = v; } catch (_) {}
+  /* ─── iOS AudioContext Unlocker ─── */
+  // Apple Safari suspends WebAudio contexts if they are created outside a strict user tap.
+  // This physically forcefully unlocks the AlphaTab engine when you hit the Play button.
+  function forceUnlockAppleAudio() {
+    if (api.player && api.player.synth && api.player.synth.audioContext) {
+      const ctx = api.player.synth.audioContext;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(err => console.warn('Apple Audio Context could not resume:', err));
       }
-    },
-    get masterVolume() { return iosMasterVolume; },
-    set masterVolume(v) {
-      iosMasterVolume = Math.max(0, Math.min(1, v));
-      if (iosAudio) iosAudio.volume = iosMasterVolume;
-    },
-    play() {
-      if (!iosAudio) return;
-      const p = iosAudio.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(err => console.warn('iOS audio play() rejected:', err));
-      }
-    },
-    pause() { if (iosAudio) iosAudio.pause(); },
-        seekTo(time) {
-      if (!iosAudio) return;
-      try { 
-        // time = Score Time. Add the intro offset back to get the real Audio Time.
-        let audioTimeMs = time + iosFirstSyncMs;
-        iosAudio.currentTime = audioTimeMs / 1000; 
-      } catch (_) {}
     }
-
-  };
-
-  function wireIosHandler() {
-    if (!isIOS || iosHandlerWired) return true;
-    const output = api.player && api.player.output;
-    if (!output) return false;
-    output.handler = iosExternalMediaHandler;
-    iosHandlerWired = true;
-    return true;
   }
-
-  if (isIOS) {
-    // player.output is created during init but may appear asynchronously.
-    // Try immediately, then poll briefly until it shows up.
-    if (!wireIosHandler()) {
-      const t = setInterval(() => { if (wireIosHandler()) clearInterval(t); }, 50);
-      setTimeout(() => clearInterval(t), 10000);
-    }
-
-    // Push position to AlphaTab at display-refresh rate so the cursor
-    // stays tight to the audio. The native `timeupdate` event only fires
-    // ~4 Hz, which is enough to make AlphaTab appear to hang before bar 1
-    // until the first tick rolls in.
-    const pushPosition = () => {
-      if (!iosAudio || iosAudio.readyState < 1) return;
-      const output = api.player && api.player.output;
-      if (!output || typeof output.updatePosition !== 'function') return;
-      
-      const rawAudioTimeMs = (iosAudio.currentTime || 0) * 1000;
-      
-      // Convert Audio Time to Score Time
-      let scoreTimeMs = rawAudioTimeMs - iosFirstSyncMs;
-      
-      // Prevent negative time (holds the cursor at Bar 1 during the silent intro)
-      if (scoreTimeMs < 0) scoreTimeMs = 0; 
-      
-      output.updatePosition(scoreTimeMs);
-    };
-
-
-    // Only push while the audio is actually playing. Pushing from a
-    // seeked event or before playback starts would feed updatePosition(0)
-    // into AlphaTab and latch a wrong bar (assigning src + load() emits
-    // a seeked to currentTime=0, which was the culprit on first load).
-        const pushPositionLoop = () => {
-      if (iosAudio && !iosAudio.paused) {
-          pushPosition();
-          
-          // Visually hide the cursor if the audio is in the "negative tick" pre-roll phase
-          const isPreRoll = (iosAudio.currentTime * 1000) < (iosFirstSyncMs - 100);
-          document.querySelector('.at-cursor-bar').style.opacity = isPreRoll ? '0' : '1';
-          document.querySelector('.at-cursor-beat').style.opacity = isPreRoll ? '0' : '1';
-      }
-      requestAnimationFrame(pushPositionLoop);
-    };
-
-    requestAnimationFrame(pushPositionLoop);
-  }
-
-    
 
   /* ─── File loading ─── */
   const fileInput  = document.getElementById('file-input');
@@ -637,125 +179,44 @@
   const dropBox    = document.getElementById('drop-box');
   const viewport   = document.getElementById('viewport');
 
-  function loadArrayBuffer(buf) {
-    api.load(buf);
-  }
-
   function openFile(file) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => loadArrayBuffer(e.target.result);
+    reader.onload = e => api.load(e.target.result);
     reader.readAsArrayBuffer(file);
   }
 
   document.getElementById('btn-open').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
-
   dropBox.addEventListener('click', () => fileInput.click());
 
   viewport.addEventListener('dragover', e => { e.preventDefault(); dropBox.classList.add('drag-over'); });
   viewport.addEventListener('dragleave', () => dropBox.classList.remove('drag-over'));
-  viewport.addEventListener('drop', e => {
-    e.preventDefault();
-    dropBox.classList.remove('drag-over');
-    openFile(e.dataTransfer.files[0]);
-  });
+  viewport.addEventListener('drop', e => { e.preventDefault(); dropBox.classList.remove('drag-over'); openFile(e.dataTransfer.files[0]); });
 
   /* ─── Score events ─── */
   const trackListEl = document.getElementById('track-list');
   const songInfoEl  = document.getElementById('song-info');
-
-  const COLORS = [
-    '#e94560','#4299e1','#48bb78','#ed8936','#9f7aea',
-    '#f6ad55','#38b2ac','#fc8181','#f687b3','#68d391'
-  ];
+  const COLORS = ['#e94560','#4299e1','#48bb78','#ed8936','#9f7aea','#f6ad55','#38b2ac','#fc8181','#f687b3','#68d391'];
 
   api.scoreLoaded.on(score => {
     dropOverlay.classList.add('hidden');
-
-    // iOS: feed the embedded audio bytes into our own <audio> element.
-    if (isIOS) {
-      wireIosHandler();
-      const bytes = score.backingTrack && score.backingTrack.rawAudioFile;
-      if (bytes && bytes.length) {
-        setIosBackingTrack(bytes);
-      } else if (iosAudio) {
-        iosAudio.removeAttribute('src');
-        iosAudio.load();
-      }
-    }
-
-    // Song info + diagnostic: show whether the GP file carries sync
-    // points and, if so, where the first one anchors the audio relative
-    // to bar 1. Lets us see on-device (no devtools needed) whether an
-    // intro misalignment is the file's fault or a playback-side bug.
     const title  = score.title  || 'Untitled';
     const artist = score.artist || '';
-
-    // Walk every master bar and collect sync-point automations.
-    // masterBar.syncPoints is an Automation[], each with type ===
-    // AutomationType.SyncPoint (=4) and a syncPointValue carrying the
-    // millisecondOffset into the audio file.
-    const syncPoints = [];
-    for (let i = 0; i < score.masterBars.length; i++) {
-      const mb = score.masterBars[i];
-      const auts = mb.syncPoints;
-      if (!auts) continue;
-      for (const a of auts) {
-        const v = a && a.syncPointValue;
-        if (v) syncPoints.push({ barIndex: i, ms: v.millisecondOffset });
-      }
-    }
-    const bt    = score.backingTrack;
+    
+    // Check if backing track natively loaded successfully
+    const bt = score.backingTrack;
     const hasBt = !!(bt && bt.rawAudioFile && bt.rawAudioFile.length);
-    const btKB  = hasBt ? Math.round(bt.rawAudioFile.length / 1024) : 0;
+    const diag = hasBt ? "Native Audio Embedded!" : "";
+    songInfoEl.innerHTML = `<strong>${title}</strong>${artist ? ' &mdash; ' + artist : ''} <span style="color:var(--accent)">${diag}</span>`;
 
-    // Cache the first sync point's audio offset for the iOS clamp.
-    iosFirstSyncMs = syncPoints.length > 0 ? (syncPoints[0].ms || 0) : 0;
-
-    let diag;
-    if (!hasBt) {
-      diag = 'no backing track';
-    } else if (syncPoints.length === 0) {
-      diag = `backing track ${btKB}KB &middot; NO sync points (MP3 not anchored in GP)`;
-    } else {
-      const first = syncPoints[0];
-      diag = `backing track ${btKB}KB &middot; ${syncPoints.length} sync pt(s) &middot; ` +
-             `first: bar ${first.barIndex + 1} @ audio ${(first.ms/1000).toFixed(2)}s`;
-    }
-
-    songInfoEl.innerHTML =
-      `<strong>${title}</strong>${artist ? ' &mdash; ' + artist : ''}` +
-      ` &middot; <span style="color:var(--accent)">${diag}</span>`;
-
-    // Track list
     trackListEl.innerHTML = '';
     score.tracks.forEach((track, i) => {
-      const color = COLORS[i % COLORS.length];
       const row = document.createElement('div');
       row.className = 'track-item';
-      row.innerHTML = `
-        <div class="track-dot" style="background:${color}"></div>
-        <span class="track-name" title="${track.name}">${track.name || ('Track ' + (i + 1))}</span>
-        <button class="t-btn" data-role="mute"  title="Mute">M</button>
-        <button class="t-btn" data-role="solo"  title="Solo">S</button>
-      `;
-
-      const muteBtn = row.querySelector('[data-role="mute"]');
-      const soloBtn = row.querySelector('[data-role="solo"]');
-
-      muteBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        const muted = muteBtn.classList.toggle('on');
-        api.changeTrackMute([track], muted);
-      });
-
-      soloBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        const soloed = soloBtn.classList.toggle('on');
-        api.changeTrackSolo([track], soloed);
-      });
-
+      row.innerHTML = `<div class="track-dot" style="background:${COLORS[i % COLORS.length]}"></div><span class="track-name">${track.name || 'Track '+(i+1)}</span><button class="t-btn" data-role="mute">M</button><button class="t-btn" data-role="solo">S</button>`;
+      row.querySelector('[data-role="mute"]').addEventListener('click', e => { e.stopPropagation(); api.changeTrackMute([track], e.target.classList.toggle('on')); });
+      row.querySelector('[data-role="solo"]').addEventListener('click', e => { e.stopPropagation(); api.changeTrackSolo([track], e.target.classList.toggle('on')); });
       trackListEl.appendChild(row);
     });
   });
@@ -766,87 +227,46 @@
   /* ─── Playback controls ─── */
   const btnPlay  = document.getElementById('btn-play');
   const btnStop  = document.getElementById('btn-stop');
-  const btnLoop  = document.getElementById('btn-loop');
-  const btnMetro = document.getElementById('btn-metro');
-  const btnCountIn = document.getElementById('btn-countin');
   const timeDsp  = document.getElementById('time');
   const progFill = document.getElementById('prog-fill');
 
-  btnPlay.addEventListener('click',  () => api.playPause());
-  btnStop.addEventListener('click',  () => api.stop());
-
-  btnLoop.addEventListener('click', () => {
-    api.isLooping = !api.isLooping;
-    btnLoop.classList.toggle('on', api.isLooping);
+  // Trigger Apple Audio Unlock directly alongside the api.playPause()
+  btnPlay.addEventListener('click', () => { 
+      forceUnlockAppleAudio(); 
+      api.playPause(); 
   });
+  
+  btnStop.addEventListener('click', () => api.stop());
 
-  btnMetro.addEventListener('click', () => {
-    const on = api.metronomeVolume === 0;
-    api.metronomeVolume = on ? 1 : 0;
-    btnMetro.classList.toggle('on', on);
-  });
+  document.getElementById('btn-loop').addEventListener('click', e => { api.isLooping = !api.isLooping; e.target.classList.toggle('on', api.isLooping); });
+  document.getElementById('btn-metro').addEventListener('click', e => { const on = api.metronomeVolume === 0; api.metronomeVolume = on ? 1 : 0; e.target.classList.toggle('on', on); });
+  document.getElementById('btn-countin').addEventListener('click', e => { const on = api.countInVolume === 0; api.countInVolume = on ? 1 : 0; e.target.classList.toggle('on', on); });
 
-  btnCountIn.addEventListener('click', () => {
-    const on = api.countInVolume === 0;
-    api.countInVolume = on ? 1 : 0;
-    btnCountIn.classList.toggle('on', on);
-  });
+  api.playerStateChanged.on(e => { btnPlay.innerHTML = e.state === 1 ? '&#9646;&#9646;' : '&#9654;'; });
 
-  // PlayerState: 0 = Paused, 1 = Playing
-  api.playerStateChanged.on(e => {
-    btnPlay.innerHTML = e.state === 1 ? '&#9646;&#9646;' : '&#9654;';
-  });
-
-  function fmt(ms) {
-    const s = Math.floor(ms / 1000);
-    return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-  }
+  function fmt(ms) { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`; }
 
   api.playerPositionChanged.on(e => {
-    if (isIOS && e.endTime > 0) iosDurationFallbackMs = e.endTime;
     timeDsp.textContent = `${fmt(e.currentTime)} / ${fmt(e.endTime)}`;
     const pct = e.endTime > 0 ? (e.currentTime / e.endTime) * 100 : 0;
     progFill.style.width = pct.toFixed(1) + '%';
   });
 
-  /* ─── Volume ─── */
-  const slVol  = document.getElementById('sl-vol');
-  const volVal = document.getElementById('vol-val');
-  slVol.addEventListener('input', () => {
-    const v = parseInt(slVol.value, 10);
-    volVal.textContent = v + '%';
+  document.getElementById('sl-vol').addEventListener('input', e => {
+    const v = parseInt(e.target.value, 10);
+    document.getElementById('vol-val').textContent = v + '%';
     api.masterVolume = v / 100;
-    if (isIOS) iosExternalMediaHandler.masterVolume = Math.min(1, v / 100);
   });
 
-  /* ─── Speed ─── */
-  const slSpeed  = document.getElementById('sl-speed');
-  const speedVal = document.getElementById('speed-val');
-  slSpeed.addEventListener('input', () => {
-    const v = parseInt(slSpeed.value, 10);
-    speedVal.textContent = v + '%';
+  document.getElementById('sl-speed').addEventListener('input', e => {
+    const v = parseInt(e.target.value, 10);
+    document.getElementById('speed-val').textContent = v + '%';
     api.playbackSpeed = v / 100;
-    if (isIOS) iosExternalMediaHandler.playbackRate = v / 100;
   });
 
-  /* ─── Layout / notation / zoom ─── */
-  document.getElementById('sel-layout').addEventListener('change', e => {
-    api.settings.display.layoutMode = parseInt(e.target.value, 10);
-    api.updateSettings();
-    api.render();
-  });
-
-  document.getElementById('sel-stave').addEventListener('change', e => {
-    api.settings.display.staveProfile = parseInt(e.target.value, 10);
-    api.updateSettings();
-    api.render();
-  });
-
-  document.getElementById('sel-zoom').addEventListener('change', e => {
-    api.settings.display.scale = parseFloat(e.target.value);
-    api.updateSettings();
-    api.render();
-  });
+  document.getElementById('sel-layout').addEventListener('change', e => { api.settings.display.layoutMode = parseInt(e.target.value, 10); api.updateSettings(); api.render(); });
+  document.getElementById('sel-stave').addEventListener('change', e => { api.settings.display.staveProfile = parseInt(e.target.value, 10); api.updateSettings(); api.render(); });
+  document.getElementById('sel-zoom').addEventListener('change', e => { api.settings.display.scale = parseFloat(e.target.value); api.updateSettings(); api.render(); });
 </script>
 </body>
 </html>
