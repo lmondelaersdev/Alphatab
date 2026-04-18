@@ -133,6 +133,24 @@
     .t-btn:hover { border-color: var(--accent); color: var(--accent); }
     .t-btn.on   { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+    /* ═══════════ AlphaTab Cursor ═══════════ */
+.at-cursor-bar {
+  /* Highlights the entire current measure */
+  background: rgba(233, 69, 96, 0.15); 
+}
+
+.at-cursor-beat {
+  /* Highlights the exact beat/chord playing right now */
+  background: rgba(233, 69, 96, 0.75);
+  width: 3px;
+}
+
+.at-selection div {
+  /* Color when you drag to select a loop range */
+  background: rgba(64, 96, 255, 0.1);
+}
+
+    
     /* Settings section */
     #settings-panel { padding: 0.6rem 0.75rem; display: flex; flex-direction: column; gap: 0.55rem; }
 
