@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Ultimate Native Sync</title>
+    <title>AlphaTab Safari - The Reboot Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -144,6 +144,7 @@
             isConverting = false;
             wavApplied = false;
             
+            // Clear settings so it generates the embedded OGG blob again
             api.settings.player.backingTrack = "";
             api.updateSettings();
             
@@ -154,7 +155,16 @@
         });
 
         api.playerReady.on(() => {
-            if (wavApplied || isConverting) return; // Prevent loop
+            // IF WE ALREADY DID THE HACK, SAFELY UNLOCK THE UI AND STOP
+            if (wavApplied) {
+                log("Engine safely Rebooted with WAV! System Ready.");
+                btnPlay.innerText = "▶";
+                btnPlay.disabled = false;
+                btnPlay.style.background = "var(--accent)";
+                return;
+            }
+
+            if (isConverting) return; // Prevent double firing
 
             let foundUrl = null;
             const searchForAudio = (obj, depth = 0) => {
@@ -179,25 +189,24 @@
                 
                 fetch(foundUrl)
                     .then(res => res.arrayBuffer())
-                    .then(buffer => new Promise((resolve, reject) => {
-                        webAudioCtx.decodeAudioData(buffer, resolve, reject);
-                    }))
+                    .then(buffer => webAudioCtx.decodeAudioData(buffer))
                     .then(decodedData => {
                         const wavBlob = audioBufferToWavBlob(decodedData);
                         const wavUrl = URL.createObjectURL(wavBlob);
                         
-                        log("WAV successfully generated! Hot-swapping track...");
+                        log("WAV generated. Executing Score Reboot...");
                         wavApplied = true;
                         
-                        // Apply the new track
+                        // 1. Point settings to the new Safari-friendly WAV
                         api.settings.player.backingTrack = wavUrl;
                         api.updateSettings();
                         
-                        // FIX: DO NOT WAIT FOR EVENT, UNLOCK UI IMMEDIATELY
-                        log("Audio Engine Ready (Synced WAV Mode).");
-                        btnPlay.innerText = "▶";
-                        btnPlay.disabled = false;
-                        btnPlay.style.background = "var(--accent)";
+                        // 2. FORCE REBOOT THE CURRENT SCORE TO PRESERVE SYNC AND RESET FLAGS
+                        if (api.score) {
+                            api.load(api.score);
+                        } else {
+                            log("Error: Score model vanished.");
+                        }
                     })
                     .catch(err => {
                         log("Conversion Error: " + err.message);
@@ -213,14 +222,21 @@
             }
         });
 
+        // SAFARI AUDIO UNLOCK & CLICK LOGGER
         btnPlay.addEventListener('click', () => {
-            // Safari standard unlocks
+            log(`Play clicked! isReadyForPlayback: ${api.isReadyForPlayback}`);
+            
+            if (!api.isReadyForPlayback) {
+                log("Warning: AlphaTab says it is NOT ready. Attempting to force anyway...");
+            }
+
             if (webAudioCtx.state === 'suspended') webAudioCtx.resume();
+            
             if (api.player?.synth?.audioContext?.state !== 'running') {
                 api.player.synth.audioContext.resume();
             }
             
-            // Safari tickle to ensure the new WAV isn't blocked by HTML5 policies
+            // Safari tickle
             if (api.player && api.player.backingTrackAudio) {
                 api.player.backingTrackAudio.play().then(() => {
                     if (api.player.state !== 1) api.player.backingTrackAudio.pause();
