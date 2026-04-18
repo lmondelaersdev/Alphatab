@@ -560,10 +560,15 @@
       }
     },
     pause() { if (iosAudio) iosAudio.pause(); },
-    seekTo(time) {
+        seekTo(time) {
       if (!iosAudio) return;
-      try { iosAudio.currentTime = time / 1000; } catch (_) {}
+      try { 
+        // time = Score Time. Add the intro offset back to get the real Audio Time.
+        let audioTimeMs = time + iosFirstSyncMs;
+        iosAudio.currentTime = audioTimeMs / 1000; 
+      } catch (_) {}
     }
+
   };
 
   function wireIosHandler() {
@@ -587,17 +592,22 @@
     // stays tight to the audio. The native `timeupdate` event only fires
     // ~4 Hz, which is enough to make AlphaTab appear to hang before bar 1
     // until the first tick rolls in.
-        const pushPosition = () => {
+    const pushPosition = () => {
       if (!iosAudio || iosAudio.readyState < 1) return;
       const output = api.player && api.player.output;
       if (!output || typeof output.updatePosition !== 'function') return;
       
-      const raw = (iosAudio.currentTime || 0) * 1000;
+      const rawAudioTimeMs = (iosAudio.currentTime || 0) * 1000;
       
-      // Send the raw audio time directly. 
-      // Do not clamp to iosFirstSyncMs, or it will skip the intro bars!
-      output.updatePosition(raw);
+      // Convert Audio Time to Score Time
+      let scoreTimeMs = rawAudioTimeMs - iosFirstSyncMs;
+      
+      // Prevent negative time (holds the cursor at Bar 1 during the silent intro)
+      if (scoreTimeMs < 0) scoreTimeMs = 0; 
+      
+      output.updatePosition(scoreTimeMs);
     };
+
 
     // Only push while the audio is actually playing. Pushing from a
     // seeked event or before playback starts would feed updatePosition(0)
