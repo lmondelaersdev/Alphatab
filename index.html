@@ -32,7 +32,14 @@
     #sync-row { height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; }
     .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
     .sbtn:active { background: var(--accent); }
+    .sbtn.on { background: var(--accent); }
     #sync-display { flex: 1; text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; }
+
+    /* Practice row */
+    #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
+    #practice-row .sep { color: #475569; }
+    #practice-row select { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; max-width: 110px; }
+    #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; }
 
     /* Fretboard */
     #fretboard-container { height: 125px; background: #1a120c; border-top: 1px solid #334155; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; -webkit-overflow-scrolling: touch; position: relative; }
@@ -61,6 +68,7 @@
         <div style="font-weight: 800; color: var(--accent); font-size: 0.9rem;">αTab</div>
         <span id="mode-pill" class="pill">SYNTH</span>
         <div id="song-info" style="flex:1; font-size: 0.75rem; opacity: 0.7; padding-left: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Load a .gp file…</div>
+        <button class="tgl on" id="tgl-practice" title="Practice tools" onclick="togglePanel('practice-row', this)">⚙</button>
         <button class="tgl on" id="tgl-sync" title="Sync controls" onclick="togglePanel('sync-row', this)">⏱</button>
         <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-container', this)">🎸</button>
         <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
@@ -83,6 +91,21 @@
 <!-- The hidden HTMLAudioElement that *actually* plays the WAV in Safari -->
 
 <audio id="external-audio" preload="auto" playsinline style="display:none"></audio>
+
+<div id="practice-row">
+    <button class="sbtn" id="btn-loop-a" title="Set loop start at current position" onclick="setLoopA()">A</button>
+    <button class="sbtn" id="btn-loop-b" title="Set loop end at current position" onclick="setLoopB()">B</button>
+    <button class="sbtn" id="btn-loop-toggle" title="Toggle loop on/off" onclick="toggleLoop()">⟲</button>
+    <span class="sep">|</span>
+    <button class="sbtn" onclick="adjustSpeed(-0.05)">−</button>
+    <span id="speed-display">1.00×</span>
+    <button class="sbtn" onclick="adjustSpeed(0.05)">+</button>
+    <span class="sep">|</span>
+    <select id="track-select"><option value="-1">All tracks</option></select>
+    <button class="sbtn" id="btn-countin" title="Count-in before play" onclick="toggleCountIn()">📯</button>
+    <button class="sbtn" onclick="adjustZoom(-0.1)">−🔍</button>
+    <button class="sbtn" onclick="adjustZoom(0.1)">+🔍</button>
+</div>
 
 <div id="sync-row">
     <span style="color: #94a3b8;">SYNC</span>
@@ -120,6 +143,17 @@
     let barNotesMap = null;     // Map<masterBarIndex, Set<"string-fret">>
     let fbDotMap = new Map();   // Map<"string-fret", SVGCircleElement>
     let lastPaintedBarIdx = -2;
+
+    // Practice state
+    let scoreRef = null;        // last loaded score
+    let currentFileKey = null;  // for localStorage keying
+    let loopStartMs = -1;       // audio time in ms (works in external-media mode)
+    let loopEndMs = -1;
+    let isLoopOn = false;
+    let isCountInOn = false;
+    let currentSpeed = 1.0;
+    let currentZoom = 1.0;
+    let currentTrackIdx = -1;   // -1 = all
 
     // ─────────────────────────────────────────────────────────────────────
     // FRETBOARD VISUALIZATION
@@ -281,6 +315,7 @@
                 ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
             );
         }
+        persistSync();
     }
     window.adjustSync = adjustSync;
 
@@ -297,6 +332,136 @@
         if (api?.render) setTimeout(() => api.render(), 0);
     }
     window.togglePanel = togglePanel;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PRACTICE TOOLS — loop A/B, speed, count-in, zoom, track selector
+    // ─────────────────────────────────────────────────────────────────────
+    function setLoopA() {
+        if (!externalAudio) return;
+        loopStartMs = externalAudio.currentTime * 1000;
+        document.getElementById('btn-loop-a').classList.add('on');
+        log("Loop A @ " + (loopStartMs/1000).toFixed(2) + "s");
+    }
+    function setLoopB() {
+        if (!externalAudio) return;
+        loopEndMs = externalAudio.currentTime * 1000;
+        document.getElementById('btn-loop-b').classList.add('on');
+        log("Loop B @ " + (loopEndMs/1000).toFixed(2) + "s");
+    }
+    function toggleLoop() {
+        if (loopStartMs < 0 || loopEndMs <= loopStartMs) {
+            log("Loop needs A and B set, with B > A");
+            return;
+        }
+        isLoopOn = !isLoopOn;
+        document.getElementById('btn-loop-toggle').classList.toggle('on', isLoopOn);
+        log("Loop " + (isLoopOn ? "ON" : "OFF"));
+    }
+    window.setLoopA = setLoopA;
+    window.setLoopB = setLoopB;
+    window.toggleLoop = toggleLoop;
+
+    function adjustSpeed(delta) {
+        currentSpeed = Math.min(1.5, Math.max(0.5, +(currentSpeed + delta).toFixed(2)));
+        if (api) api.playbackSpeed = currentSpeed;
+        if (externalAudio) externalAudio.playbackRate = currentSpeed;
+        document.getElementById('speed-display').textContent = currentSpeed.toFixed(2) + '×';
+    }
+    window.adjustSpeed = adjustSpeed;
+
+    function adjustZoom(delta) {
+        currentZoom = Math.min(2.0, Math.max(0.5, +(currentZoom + delta).toFixed(2)));
+        if (api) {
+            api.settings.display.scale = currentZoom;
+            api.updateSettings();
+            api.render();
+        }
+        log("Zoom: " + currentZoom.toFixed(2) + "×");
+    }
+    window.adjustZoom = adjustZoom;
+
+    function toggleCountIn() {
+        isCountInOn = !isCountInOn;
+        document.getElementById('btn-countin').classList.toggle('on', isCountInOn);
+    }
+    window.toggleCountIn = toggleCountIn;
+
+    function playClick(accent) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = accent ? 1500 : 1000;
+        osc.type = 'square';
+        const t = audioCtx.currentTime;
+        gain.gain.setValueAtTime(0.25, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        osc.start(t);
+        osc.stop(t + 0.05);
+    }
+
+    async function startPlayback() {
+        if (audioCtx.state !== 'running') audioCtx.resume();
+
+        // If already playing, just toggle pause — no count-in
+        if (api?.playerState === 1) { api.playPause(); return; }
+
+        if (!isCountInOn) { api.playPause(); return; }
+
+        // Count-in: derive tempo + meter from score
+        const tempo = scoreRef?.masterBars?.[0]?.tempoAutomations?.[0]?.value
+                    || scoreRef?.tempo
+                    || 120;
+        const beats = scoreRef?.masterBars?.[0]?.timeSignatureNumerator || 4;
+        const beatMs = 60000 / tempo / currentSpeed;
+
+        log(`Count-in: ${beats} beats @ ${tempo} BPM`);
+        for (let i = 0; i < beats; i++) {
+            playClick(i === 0);
+            await new Promise(r => setTimeout(r, beatMs));
+        }
+        api.playPause();
+    }
+    window.startPlayback = startPlayback;
+
+    function populateTrackSelect(score) {
+        const sel = document.getElementById('track-select');
+        sel.innerHTML = '<option value="-1">All tracks</option>';
+        (score.tracks || []).forEach((track, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = (track.name || ('Track ' + (i+1))).slice(0, 24);
+            sel.appendChild(opt);
+        });
+        sel.onchange = () => {
+            currentTrackIdx = parseInt(sel.value, 10);
+            const tracks = currentTrackIdx < 0 ? score.tracks : [score.tracks[currentTrackIdx]];
+            api.renderTracks(tracks);
+            barNotesMap = buildBarNotesMap({ tracks });
+            lastPaintedBarIdx = -2;
+            repaintFretboard(0, null);
+        };
+    }
+
+    // Sync offset persistence
+    function persistSync() {
+        if (!currentFileKey) return;
+        try { localStorage.setItem('at-sync:' + currentFileKey, String(syncOffsetMs)); } catch(e) {}
+    }
+    function restoreSync(fileKey) {
+        try {
+            const v = localStorage.getItem('at-sync:' + fileKey);
+            if (v !== null) {
+                syncOffsetMs = parseInt(v, 10) || 0;
+                const sign = syncOffsetMs > 0 ? '+' : '';
+                document.getElementById('sync-display').textContent = sign + syncOffsetMs + ' ms';
+                if (syncOffsetMs !== 0) log("Restored sync offset: " + syncOffsetMs + " ms");
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // PHASE A — BOOT (must happen inside a user gesture for Safari)
@@ -349,11 +514,62 @@
 
         wireApiEvents();
         initFretboard();
+        wirePinchZoom();
 
         document.getElementById('startup-screen').style.display = 'none';
         document.getElementById('app').classList.add('ready');
         log("Engine online.");
     };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PINCH-TO-ZOOM on the tabs container
+    // ─────────────────────────────────────────────────────────────────────
+    function wirePinchZoom() {
+        const main = document.getElementById('main');
+        let pinchDist0 = 0;
+        let pinchScale0 = 1;
+        let pinching = false;
+
+        main.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                pinchDist0 = Math.hypot(dx, dy);
+                pinchScale0 = currentZoom;
+                pinching = true;
+            }
+        }, { passive: true });
+
+        main.addEventListener('touchmove', (e) => {
+            if (pinching && e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                const next = Math.min(2.0, Math.max(0.5, pinchScale0 * (dist / pinchDist0)));
+                // Don't re-render every frame; CSS transform for live preview
+                main.firstElementChild.style.transformOrigin = '0 0';
+                main.firstElementChild.style.transform = 'scale(' + (next / currentZoom).toFixed(3) + ')';
+            }
+        }, { passive: true });
+
+        main.addEventListener('touchend', () => {
+            if (pinching) {
+                const t = main.firstElementChild.style.transform;
+                const m = t && t.match(/scale\(([\d.]+)\)/);
+                main.firstElementChild.style.transform = '';
+                if (m) {
+                    const factor = parseFloat(m[1]);
+                    const target = +(currentZoom * factor).toFixed(2);
+                    currentZoom = Math.min(2.0, Math.max(0.5, target));
+                    api.settings.display.scale = currentZoom;
+                    api.updateSettings();
+                    api.render();
+                }
+                pinching = false;
+                pinchDist0 = 0;
+            }
+        });
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // PHASE B — On every score load: decode OGG → WAV, swap audio src
@@ -362,6 +578,11 @@
 
         api.scoreLoaded.on(async (score) => {
             log("Score loaded: " + (score.title || "(untitled)"));
+            scoreRef = score;
+
+            // Populate track selector and reset to "all"
+            populateTrackSelect(score);
+            currentTrackIdx = -1;
 
             // Build fretboard bar-notes map and paint bar 1 immediately
             barNotesMap = buildBarNotesMap(score);
@@ -453,6 +674,25 @@
             lastPaintedBarIdx = barIdx;
         });
 
+        // Tap-to-highlight on tabs: when user taps a beat (paused or playing)
+        // light up the fretboard for that beat. alphaTab itself handles
+        // seeking the cursor; we sync the audio position too.
+        api.beatMouseDown.on((beat) => {
+            const b = beat?.beat || beat;
+            if (!b) return;
+            const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
+            repaintFretboard(barIdx, b.notes || []);
+            lastPaintedBarIdx = barIdx;
+
+            // Sync external audio to the tapped beat's playback time.
+            // absolutePlaybackStart is in milliseconds in alphaTab 1.8.
+            const tMs = b.absolutePlaybackStart;
+            if (typeof tMs === 'number' && externalAudio && Number.isFinite(externalAudio.duration)) {
+                const targetSec = Math.max(0, Math.min(externalAudio.duration, (tMs - syncOffsetMs) / 1000));
+                externalAudio.currentTime = targetSec;
+            }
+        });
+
         api.error.on((err) => log("alphaTab error: " + (err?.message || err)));
     }
 
@@ -487,6 +727,13 @@
 
         // Feed position back to alphaTab so the cursor tracks the audio.
         const onTimeUpdate = () => {
+            // Manual loop wrap — alphaTab can't loop external media on its own
+            if (isLoopOn && loopStartMs >= 0 && loopEndMs > loopStartMs) {
+                const curMs = externalAudio.currentTime * 1000;
+                if (curMs >= loopEndMs) {
+                    externalAudio.currentTime = loopStartMs / 1000;
+                }
+            }
             output.updatePosition(
                 ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
             );
@@ -508,11 +755,7 @@
     // PLAY BUTTON — strictly synchronous gesture chain
     // ─────────────────────────────────────────────────────────────────────
     document.getElementById('btn-play').onclick = () => {
-        if (audioCtx.state !== 'running') audioCtx.resume();
-        // In external-media mode, api.playPause() will synchronously call
-        // handler.play() / handler.pause() which calls externalAudio.play().
-        // Because we're still inside this click handler, Safari accepts it.
-        api.playPause();
+        startPlayback();
     };
 
     // ─────────────────────────────────────────────────────────────────────
@@ -527,6 +770,18 @@
         externalAudio.pause();
         externalAudio.removeAttribute('src');
         externalAudio.load();
+
+        // Per-file sync offset memory
+        currentFileKey = file.name + ':' + file.size;
+        syncOffsetMs = 0;
+        document.getElementById('sync-display').textContent = '0 ms';
+        restoreSync(currentFileKey);
+
+        // Reset loop state for new file
+        loopStartMs = -1; loopEndMs = -1; isLoopOn = false;
+        document.getElementById('btn-loop-a').classList.remove('on');
+        document.getElementById('btn-loop-b').classList.remove('on');
+        document.getElementById('btn-loop-toggle').classList.remove('on');
 
         const reader = new FileReader();
         reader.onload = (ev) => api.load(ev.target.result);
