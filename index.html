@@ -11,13 +11,17 @@
         body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
         #app { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
         #app.ready { opacity: 1; pointer-events: all; }
-        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid #334155; flex-shrink: 0; gap: 10px; }
+        #header { height: 48px; background: var(--surface); display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid #334155; flex-shrink: 0; gap: 6px; }
         #main { flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #fff; position: relative; }
         #at-element { width: 100%; }
-        #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
-        #debug-container { height: 80px; background: #000; padding: 6px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; }
+        #footer { height: 56px; background: var(--surface); display: flex; align-items: center; padding: 0 12px; gap: 12px; flex-shrink: 0; }
+        #debug-container { height: 80px; background: #000; padding: 6px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; display: none; }
 
 ```
+    /* Toggle pills in header */
+    .tgl { background: #334155; color: #94a3b8; border: none; width: 32px; height: 32px; border-radius: 6px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+    .tgl.on { background: var(--accent); color: white; }
+
     /* alphaTab playback cursor — no default styles ship with the lib */
     .at-cursor-bar  { background: rgba(255, 242, 0, 0.25); }
     .at-cursor-beat { background: var(--accent); width: 3px; }
@@ -54,19 +58,22 @@
 
 <div id="app">
     <div id="header">
-        <div style="font-weight: 800; color: var(--accent);">AlphaTab Pro</div>
+        <div style="font-weight: 800; color: var(--accent); font-size: 0.9rem;">αTab</div>
         <span id="mode-pill" class="pill">SYNTH</span>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; padding-left: 5px;">Load a .gp file…</div>
-        <button class="btn" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open</button>
+        <div id="song-info" style="flex:1; font-size: 0.75rem; opacity: 0.7; padding-left: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Load a .gp file…</div>
+        <button class="tgl on" id="tgl-sync" title="Sync controls" onclick="togglePanel('sync-row', this)">⏱</button>
+        <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-container', this)">🎸</button>
+        <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
+        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()">📁</button>
         <!-- No accept filter: iOS has no UTI for .gp and will grey everything out -->
         <input type="file" id="file-input" style="display:none" />
     </div>
     <div id="main"><div id="at-element"></div></div>
     <div id="footer">
-        <button class="btn" id="btn-play" disabled style="width: 60px; height: 50px; font-size: 1.5rem;">▶</button>
+        <button class="btn" id="btn-play" disabled style="width: 50px; height: 40px; font-size: 1.3rem; padding: 0;">▶</button>
         <div style="flex:1;">
-            <div id="time" style="font-size: 0.8rem; font-family: monospace; color: #94a3b8;">0:00 / 0:00</div>
-            <div style="height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 4px;">
+            <div id="time" style="font-size: 0.75rem; font-family: monospace; color: #94a3b8;">0:00 / 0:00</div>
+            <div style="height: 5px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 3px;">
                 <div id="prog-fill" style="height: 100%; background: var(--accent); width: 0%;"></div>
             </div>
         </div>
@@ -278,6 +285,20 @@
     window.adjustSync = adjustSync;
 
     // ─────────────────────────────────────────────────────────────────────
+    // PANEL TOGGLES — show/hide chrome rows to reclaim screen space
+    // ─────────────────────────────────────────────────────────────────────
+    function togglePanel(panelId, btn) {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+        const showing = panel.style.display !== 'none';
+        panel.style.display = showing ? 'none' : '';
+        btn.classList.toggle('on', !showing);
+        // Re-render alphaTab so it picks up the new viewport size
+        if (api?.render) setTimeout(() => api.render(), 0);
+    }
+    window.togglePanel = togglePanel;
+
+    // ─────────────────────────────────────────────────────────────────────
     // PHASE A — BOOT (must happen inside a user gesture for Safari)
     // ─────────────────────────────────────────────────────────────────────
     document.getElementById('btn-initialize').onclick = async function () {
@@ -317,7 +338,12 @@
                 enableCursor: true,
                 enableUserInteraction: true,
                 soundFont: CDN + 'soundfont/sonivox.sf2',
-                playerMode: alphaTab.PlayerMode.EnabledExternalMedia
+                playerMode: alphaTab.PlayerMode.EnabledExternalMedia,
+                // Auto-follow: keep the playback cursor visible as the song progresses
+                scrollMode: alphaTab.ScrollMode.Continuous,
+                scrollElement: document.getElementById('main'),
+                scrollOffsetY: -30,
+                scrollSpeed: 300
             }
         });
 
