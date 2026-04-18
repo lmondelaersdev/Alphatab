@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Synth Fix</title>
+    <title>AlphaTab Safari - Search & Rescue</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -54,7 +54,7 @@
 </div>
 
 <div id="debug-container">
-    <pre id="debug-log">System booted. Waiting to initialize...</pre>
+    <pre id="debug-log">System booted. Catching browser errors...</pre>
 </div>
 
 <script>
@@ -63,6 +63,11 @@
         logBox.innerText += "\n> " + msg; 
         logBox.scrollTop = logBox.scrollHeight; 
     };
+
+    // --- SAFARI SILENT ERROR CATCHER ---
+    window.addEventListener('unhandledrejection', (e) => {
+        log("BROWSER BLOCKED AUDIO: " + (e.reason ? (e.reason.message || e.reason) : "Unknown Autoplay Error"));
+    });
     
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     let api = null;
@@ -77,36 +82,19 @@
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
-                    enableBackingTracks: true,
-                    // THE FIX: Official sonivox soundfont URL
-                    soundFont: CDN + 'soundfont/sonivox.sf2' 
+                    enableBackingTracks: true
                 }
             });
 
             document.getElementById('app').classList.add('ready');
-            log("UI Unlocked. Ready for file input.");
+            log("UI Unlocked.");
             setupControls();
-
         } catch (e) { log("BOOT CRASH: " + e.message); }
     });
 
     function setupControls() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
-
-        // --- NEW: Track Soundfont Download Progress ---
-        api.soundFontLoad.on((e) => {
-            log(`Downloading Soundfont: ${Math.round((e.loaded / e.total) * 100)}%`);
-        });
-        
-        api.soundFontLoaded.on(() => {
-            log("SUCCESS: Soundfont completely loaded into memory!");
-        });
-
-        // Track API Errors
-        api.error.on((e) => {
-            log("API ERROR: " + e.message);
-        });
 
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -115,11 +103,9 @@
             log("Reading file: " + file.name);
             document.getElementById('song-info').innerText = file.name;
             btnPlay.style.background = "#475569";
-            btnPlay.innerText = "⏳";
             
             const reader = new FileReader();
             reader.onload = (args) => {
-                log("Sending data to AlphaTab...");
                 api.load(args.target.result);
             };
             reader.readAsArrayBuffer(file);
@@ -127,24 +113,49 @@
 
         api.playerReady.on(() => {
             log("Audio Engine Ready!");
-            btnPlay.innerText = "▶";
             btnPlay.style.background = "var(--accent)";
         });
 
         btnPlay.addEventListener('click', () => {
-            log("Play Button Clicked");
-            log("isReadyForPlayback: " + api.isReadyForPlayback);
+            log("Play Clicked");
             
-            try {
-                // Let AlphaTab handle the unlock natively this time
-                api.playPause();
-            } catch (err) {
-                log("PLAY ERROR: " + err.message);
+            // --- SEARCH AND RESCUE THE HIDDEN AUDIO ELEMENT ---
+            let foundAudioElement = false;
+            
+            const searchForAudio = (obj, depth = 0) => {
+                if(depth > 4 || !obj || foundAudioElement) return;
+                for(let key in obj) {
+                    try {
+                        if(obj[key] instanceof HTMLAudioElement) {
+                            foundAudioElement = true;
+                            log("Found hidden Safari Audio element! Forcing play...");
+                            
+                            // FORCE PLAY DIRECTLY ON THE CLICK
+                            obj[key].play().then(() => {
+                                log("Safari allowed the backing track to play!");
+                            }).catch(err => {
+                                log("Safari blocked the backing track: " + err.message);
+                            });
+                        } else if (typeof obj[key] === 'object') {
+                            searchForAudio(obj[key], depth + 1);
+                        }
+                    } catch(e){}
+                }
+            };
+            
+            // Scan AlphaTab's memory
+            searchForAudio(api);
+            
+            if(!foundAudioElement) {
+                log("Warning: No HTMLAudioElement found in memory.");
             }
+
+            // Normal play routine
+            api.playPause();
         });
 
         api.playerStateChanged.on(e => {
-            log("State Changed: " + e.state);
+            log("State: " + e.state);
             btnPlay.innerText = (e.state === 1) ? '⏸' : '▶';
         });
 
