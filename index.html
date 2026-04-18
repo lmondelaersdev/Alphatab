@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari — Theory Engine</title>
+    <title>AlphaTab Safari — Theory Media Engine</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
@@ -46,11 +46,12 @@
         #fretboard-container { height: 125px; background: #1a120c; border-top: 1px solid #334155; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; -webkit-overflow-scrolling: touch; position: relative; }
         #fretboard-container svg { display: block; height: 100%; }
         .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
+        
+        /* New Theory Elements */
         .fb-text { font-size: 6.5px; font-family: sans-serif; font-weight: bold; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; opacity: 0; transition: opacity 90ms linear; }
+        #fb-chord-label { position: absolute; top: 4px; left: 8px; font-size: 0.8rem; color: #3b82f6; font-family: sans-serif; font-weight: 800; pointer-events: all; cursor: pointer; z-index: 2; }
         
         #fb-bar-label { position: absolute; top: 4px; right: 8px; font-size: 0.65rem; color: var(--accent); font-family: monospace; font-weight: bold; pointer-events: none; z-index: 2; }
-        #fb-chord-label { position: absolute; top: 4px; left: 8px; font-size: 0.8rem; color: #3b82f6; font-family: sans-serif; font-weight: 800; pointer-events: none; z-index: 2; }
-        
         #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
         .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn:disabled { opacity: 0.5; cursor: wait; }
@@ -121,7 +122,7 @@
 </div>
 
 <div id="fretboard-container">
-    <span id="fb-chord-label"></span>
+    <span id="fb-chord-label" title="Click to cycle chord extensions"></span>
     <span id="fb-bar-label">BAR —</span>
     <div id="fretboard"></div>
 </div>
@@ -145,11 +146,11 @@
     let syncOffsetMs = 0;       
     let barNotesMap = null;     
     let fbDotMap = new Map();   
-    let fbTxtMap = new Map();   // New: Map to hold text intervals
+    let fbTxtMap = new Map();   
     let lastPaintedBarIdx = -2;
-    let lastActiveNotes = null; // New: To allow toggling without waiting for beat
+    let lastActiveNotes = null;
 
-    // Practice & Theory state
+    // Practice state
     let scoreRef = null;        
     let currentFileKey = null;  
     let loopStartMs = -1;       
@@ -159,11 +160,16 @@
     let currentSpeed = 1.0;
     let currentZoom = 1.0;
     let currentTrackIdx = -1;   
-    
-    // Theory Engine State
+
+    // ─────────────────────────────────────────────────────────────────────
+    // THEORY ENGINE STATE
+    // ─────────────────────────────────────────────────────────────────────
     let theoryMode = false;
     let activeChordName = "";
-    const standardTuningMidi = [64, 59, 55, 50, 45, 40]; // High E to Low E
+    let extCycle = 0;
+    let baseChord = "";
+    // Note: AlphaTab string 1 is Low E (lowest pitch). Mapped 40 (Low E) to 64 (High E).
+    const standardTuningMidi = [40, 45, 50, 55, 59, 64]; 
 
     // ─────────────────────────────────────────────────────────────────────
     // FRETBOARD VISUALIZATION
@@ -217,17 +223,17 @@
             parts.push(`<text x="${x}" y="${boardBot + 11}" text-anchor="middle" font-size="9" fill="#7a6450" font-family="monospace">${f}</text>`);
         }
 
-        // Strings
+        // Strings (INVERTED Y-AXIS: s=6 is Top/High E, s=1 is Bottom/Low E)
         for (let s = 1; s <= FB.strings; s++) {
-            const y = FB.padTop + (s - 1) * FB.stringGap;
-            const thickness = 0.8 + (s - 1) * 0.25;
+            const y = FB.padTop + (FB.strings - s) * FB.stringGap;
+            const thickness = 0.8 + (FB.strings - s) * 0.25;
             parts.push(`<line x1="${stringX0}" y1="${y}" x2="${stringX1}" y2="${y}" stroke="#d8d8d8" stroke-width="${thickness}"/>`);
         }
 
-        // Dots & Interval Texts
+        // Dots & Interval Texts (Inverted Y-axis)
         for (let s = 1; s <= FB.strings; s++) {
-            const y = FB.padTop + (s - 1) * FB.stringGap;
-            // Open string
+            const y = FB.padTop + (FB.strings - s) * FB.stringGap;
+            // Open string (left of nut)
             parts.push(`<circle class="fb-dot" id="fb-dot-${s}-0" cx="${FB.padLeft - 14}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
             parts.push(`<text class="fb-text" id="fb-txt-${s}-0" x="${FB.padLeft - 14}" y="${y}"></text>`);
             
@@ -281,7 +287,9 @@
         return map;
     }
 
-    // Theory Math Helpers
+    // ─────────────────────────────────────────────────────────────────────
+    // THEORY ENGINE & PAINTING
+    // ─────────────────────────────────────────────────────────────────────
     function getIntervalColor(ivl) {
         if (ivl.startsWith('1')) return 'rgba(239, 68, 68, 0.6)';   // Red
         if (ivl.startsWith('3')) return 'rgba(245, 158, 11, 0.6)'; // Orange
@@ -307,6 +315,19 @@
     }
     window.toggleTheory = toggleTheory;
 
+    // Cycle chord extensions on click
+    document.getElementById('fb-chord-label').onclick = () => {
+        if (!activeChordName) return;
+        if (extCycle === 0) baseChord = activeChordName.replace(/[^A-G#b]/g, ''); 
+        extCycle = (extCycle + 1) % 3;
+        
+        if (extCycle === 0) activeChordName = baseChord;         
+        if (extCycle === 1) activeChordName = baseChord + "maj7"; 
+        if (extCycle === 2) activeChordName = baseChord + "13";   
+        
+        repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+    };
+
     function repaintFretboard(barIdx, activeNotes) {
         lastPaintedBarIdx = barIdx;
         lastActiveNotes = activeNotes;
@@ -322,8 +343,8 @@
             el.textContent = '';
         });
 
-        // LAYER 1: THEORY MATRIX (If active and chord exists)
-        if (theoryMode && activeChordName && Tonal) {
+        // LAYER 1: THEORY MATRIX
+        if (theoryMode && activeChordName && typeof Tonal !== 'undefined') {
             const chordData = Tonal.Chord.get(activeChordName);
             if (!chordData.empty) {
                 const chordChromas = chordData.notes.map(n => Tonal.Note.chroma(n));
@@ -342,7 +363,7 @@
                                 const ivl = chordData.intervals[noteIdx];
                                 dot.setAttribute('fill', getIntervalColor(ivl));
                                 dot.setAttribute('r', '6');
-                                txt.textContent = ivl.replace(/M|m|P|d|A/g, ''); // Simplify (e.g. 3m -> 3)
+                                txt.textContent = ivl.replace(/M|m|P|d|A/g, ''); 
                                 txt.style.opacity = '1';
                             }
                         }
@@ -351,18 +372,16 @@
             }
         }
 
-        // LAYER 2: BAR NOTES (White context dots)
+        // LAYER 2: BAR NOTES (Context)
         const barSet = barNotesMap?.get(barIdx);
         if (barSet) {
             barSet.forEach(key => {
                 const el = fbDotMap.get(key);
                 if (el) {
                     if (theoryMode && activeChordName) {
-                        // In theory mode, just add a stroke so we don't hide the theory color
                         el.setAttribute('stroke', 'rgba(255,255,255,0.9)');
                         el.setAttribute('stroke-width', '1.5');
                     } else {
-                        // Standard mode
                         el.setAttribute('fill', 'rgba(255,255,255,0.85)');
                         el.setAttribute('stroke', '#1a120c');
                     }
@@ -377,12 +396,11 @@
                 const el = fbDotMap.get(key);
                 const txt = fbTxtMap.get(key);
                 if (el) {
-                    el.setAttribute('fill', '#e94560'); // Bright Red for action
+                    el.setAttribute('fill', '#e94560');
                     el.setAttribute('stroke', '#fff');
                     el.setAttribute('stroke-width', '1.5');
                     el.setAttribute('r', '7.5');
                 }
-                // Hide interval text for currently playing note so it doesn't look cluttered
                 if (txt) txt.style.opacity = '0';
             }
         }
@@ -395,7 +413,7 @@
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // SYNC OFFSET — adjustable at runtime
+    // SYNC OFFSET
     // ─────────────────────────────────────────────────────────────────────
     function adjustSync(deltaMs) {
         syncOffsetMs += deltaMs;
@@ -650,7 +668,11 @@
         api.scoreLoaded.on(async (score) => {
             log("Score loaded: " + (score.title || "(untitled)"));
             scoreRef = score;
-            activeChordName = ""; // Reset Theory
+            
+            // Reset Theory logic for new file
+            activeChordName = ""; 
+            extCycle = 0;
+            baseChord = "";
             document.getElementById('fb-chord-label').textContent = "";
 
             populateTrackSelect(score);
