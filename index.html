@@ -3,25 +3,20 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - The Final Sync (Fixed Array)</title>
+    <title>AlphaTab Safari - The Final Handshake</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
         body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
-        
         #app { display: flex; flex-direction: column; flex: 1; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; overflow: hidden; }
         #app.ready { opacity: 1; pointer-events: all; }
-        
         #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; border-bottom: 1px solid #334155; flex-shrink: 0; }
         #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
         #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
-        
         #debug-container { height: 140px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
         #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
-        
         .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); text-align: center; }
-        
         .at-cursor-bar { background: rgba(233, 69, 96, 0.15) !important; }
         .at-cursor-beat { background: #e94560 !important; width: 3px !important; }
     </style>
@@ -39,9 +34,7 @@
         <button class="btn" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open File</button>
         <input type="file" id="file-input" style="display:none" accept=".gp,.gpx,.gp5,*/*" />
     </div>
-
     <div id="main"><div id="at-element"></div></div>
-
     <div id="footer">
         <button class="btn" id="btn-play" disabled style="width: 60px; height: 50px; font-size: 1.5rem; background: #475569;">▶</button>
         <div style="flex:1;">
@@ -59,44 +52,31 @@
 
 <script>
     const logBox = document.getElementById('debug-log');
-    const log = (msg) => { 
-        logBox.innerText += "\n> " + msg; 
-        logBox.scrollTop = logBox.scrollHeight; 
-    };
-
+    const log = (msg) => { logBox.innerText += "\n> " + msg; logBox.scrollTop = logBox.scrollHeight; };
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
-    let api = null;
-    let webAudioCtx = null;
-    
-    // STRICT STATE MACHINE
-    let globalFileBuffer = null;
-    let syncState = 0; // 0=Idle, 1=Pass 1, 2=Converting (Ignore Events), 3=Pass 2
+    let api = null; let webAudioCtx = null;
+    let globalFileBuffer = null; let syncState = 0;
 
-    // --- RAW PCM TO WAV BYTE ARRAY ---
     function audioBufferToWavBlob(buffer) {
         log("Encoding raw PCM to perfect WAV...");
         const numOfChan = buffer.numberOfChannels;
         const length = buffer.length * numOfChan * 2 + 44;
         const out = new ArrayBuffer(length);
         const view = new DataView(out);
+        const setUint16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
+        const setUint32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
+        let pos = 0;
+        setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66);
+        setUint32(16); setUint16(1); setUint16(numOfChan); setUint32(buffer.sampleRate);
+        setUint32(buffer.sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16);
+        setUint32(0x61746164); setUint32(length - pos - 4);
         const channels = [];
-        let sample = 0, offset = 0, pos = 0;
-
-        const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
-        const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
-
-        setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
-        setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-        setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan); 
-        setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); 
-        setUint32(length - pos - 4); 
-
-        for(let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
-
+        for(let i = 0; i < numOfChan; i++) channels.push(buffer.getChannelData(i));
+        let offset = 0;
         while(pos < length) {
             for(let i = 0; i < numOfChan; i++) {
-                sample = Math.max(-1, Math.min(1, channels[i][offset])); 
-                sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; 
+                let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
                 view.setInt16(pos, sample, true); pos += 2;
             }
             offset++;
@@ -106,151 +86,89 @@
 
     document.getElementById('btn-initialize').addEventListener('click', function() {
         document.getElementById('startup-screen').style.display = 'none';
-        log("Booting API...");
-        
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         webAudioCtx = new AudioContext();
-        
-        try {
-            api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
-                core: { fontDirectory: CDN + 'font/' },
-                player: { 
-                    enablePlayer: true, 
-                    enableCursor: true,          
-                    enableUserInteraction: true,
-                    enableBackingTracks: true, 
-                    soundFont: CDN + 'soundfont/sonivox.sf2' 
-                }
-            });
-
-            document.getElementById('app').classList.add('ready');
-            log("UI Unlocked.");
-            setupControls();
-        } catch (e) { log("BOOT CRASH: " + e.message); }
+        api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
+            core: { fontDirectory: CDN + 'font/' },
+            player: { enablePlayer: true, enableCursor: true, enableUserInteraction: true, enableBackingTracks: true, soundFont: CDN + 'soundfont/sonivox.sf2' }
+        });
+        document.getElementById('app').classList.add('ready');
+        log("UI Unlocked.");
+        setupControls();
     });
 
     function setupControls() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
-
         fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            
+            const file = e.target.files[0]; if (!file) return;
             document.getElementById('song-info').innerText = file.name;
-            btnPlay.disabled = true;
-            btnPlay.innerText = "⏳";
-            btnPlay.style.background = "#475569";
-            
-            syncState = 1; // Start Pass 1
-            api.settings.player.backingTrack = ""; 
-            
-            log("PASS 1: Loading file to extract OGG...");
+            btnPlay.disabled = true; btnPlay.innerText = "⏳";
+            syncState = 1; api.settings.player.backingTrack = "";
+            log("PASS 1: Extraction...");
             const reader = new FileReader();
-            reader.onload = (args) => { 
-                globalFileBuffer = args.target.result;
-                // BUG FIX: Use .slice(0) to make a clean copy instead of Uint8Array
-                api.load(globalFileBuffer.slice(0)); 
-            };
+            reader.onload = (args) => { globalFileBuffer = args.target.result; api.load(globalFileBuffer.slice(0)); };
             reader.readAsArrayBuffer(file);
         });
 
-        // --- THE TWO-PASS EVENT LOOP ---
         api.playerReady.on(() => {
-            if (syncState === 2) {
-                // Ignore random events while decoding
-                return; 
-            }
-
+            if (syncState === 2) return;
             if (syncState === 1) {
-                log("Pass 1 Complete. Hunting for OGG Blob...");
-                syncState = 2; // LOCK STATE: WE ARE NOW CONVERTING
-                
+                log("Pass 1 done. Hunting blob...");
+                syncState = 2;
                 let foundUrl = null;
-                const searchForAudio = (obj, depth = 0) => {
-                    if(depth > 6 || !obj || foundUrl) return;
-                    for(let key in obj) {
+                const search = (obj, d = 0) => {
+                    if(d > 6 || !obj || foundUrl) return;
+                    for(let k in obj) {
                         try {
-                            if(obj[key] instanceof HTMLAudioElement && obj[key].src && obj[key].src.startsWith('blob:')) {
-                                foundUrl = obj[key].src;
-                                return;
-                            } else if (typeof obj[key] === 'object') {
-                                searchForAudio(obj[key], depth + 1);
-                            }
+                            if(obj[k] instanceof HTMLAudioElement && obj[k].src.startsWith('blob:')) { foundUrl = obj[k].src; return; }
+                            else if (typeof obj[k] === 'object') search(obj[k], d + 1);
                         } catch(e){}
                     }
                 };
-                
-                searchForAudio(api);
-
+                search(api);
                 if (foundUrl) {
-                    log("OGG found. Decoding asynchronously...");
-                    
-                    fetch(foundUrl)
-                        .then(res => res.arrayBuffer())
-                        .then(buffer => webAudioCtx.decodeAudioData(buffer))
-                        .then(decodedData => {
-                            const wavBlob = audioBufferToWavBlob(decodedData);
-                            const wavUrl = URL.createObjectURL(wavBlob);
-                            
-                            log("PASS 2: Re-loading GP8 file with Safari-friendly WAV...");
-                            api.settings.player.backingTrack = wavUrl;
-                            
-                            syncState = 3; // UNLOCK STATE FOR PASS 2
-                            // BUG FIX: Use .slice(0) again
-                            api.load(globalFileBuffer.slice(0));
-                        })
-                        .catch(err => { 
-                            log("Decode Error: " + err.message); 
-                            syncState = 0; // Fail gracefully
-                            btnPlay.innerText = "▶";
-                            btnPlay.disabled = false;
-                            btnPlay.style.background = "var(--accent)";
-                        });
-                } else {
-                    log("No OGG found. MIDI Only mode.");
-                    syncState = 0;
-                    btnPlay.innerText = "▶";
-                    btnPlay.disabled = false;
-                    btnPlay.style.background = "var(--accent)";
+                    fetch(foundUrl).then(r => r.arrayBuffer()).then(b => webAudioCtx.decodeAudioData(b)).then(decoded => {
+                        const wavUrl = URL.createObjectURL(audioBufferToWavBlob(decoded));
+                        log("PASS 2: Final Sync...");
+                        api.settings.player.backingTrack = wavUrl;
+                        syncState = 3;
+                        api.load(globalFileBuffer.slice(0));
+                    });
                 }
-
-            } else if (syncState === 3) {
-                // PASS 2 IS COMPLETE
-                log("SUCCESS: Native Sync Map Generated! Ready to play.");
-                syncState = 0; // Reset to idle
-                btnPlay.innerText = "▶";
-                btnPlay.disabled = false;
-                btnPlay.style.background = "var(--accent)";
+            } else if (syncState === 3 || syncState === 0) {
+                log("SYSTEM READY.");
+                syncState = 0; btnPlay.innerText = "▶"; btnPlay.disabled = false; btnPlay.style.background = "var(--accent)";
             }
         });
 
-        // SAFARI AUDIO UNLOCK
         btnPlay.addEventListener('click', () => {
-            if (webAudioCtx.state === 'suspended') webAudioCtx.resume();
+            log("PLAY CLICKED"); // Verifies touch is working
+            
+            // 1. Force WebAudio Resume
+            if (webAudioCtx.state !== 'running') { webAudioCtx.resume(); log("WebAudio Resumed"); }
             if (api.player?.synth?.audioContext?.state !== 'running') {
                 api.player.synth.audioContext.resume();
+                log("Synth Context Resumed");
             }
-
-            // Safari tickle
+            
+            // 2. Physical Tickle for Safari
             if (api.player && api.player.backingTrackAudio) {
                 api.player.backingTrackAudio.play().then(() => {
                     if (api.player.state !== 1) api.player.backingTrackAudio.pause();
-                }).catch(e => log("Safari Play Block: " + e.message));
+                    log("Safari Audio Element Unlocked");
+                }).catch(e => log("Safari Blocked Audio: " + e.message));
             }
 
+            // 3. Command AlphaTab
             api.playPause();
         });
 
-        api.playerStateChanged.on(e => {
-            btnPlay.innerText = (e.state === 1) ? '⏸' : '▶';
-        });
-
+        api.playerStateChanged.on(e => { btnPlay.innerText = (e.state === 1) ? '⏸' : '▶'; });
         api.playerPositionChanged.on(e => {
-            const current = e.currentTime / 1000;
-            const total = e.endTime / 1000;
+            const cur = e.currentTime / 1000; const tot = e.endTime / 1000;
             const fmt = (s) => isNaN(s) ? "0:00" : Math.floor(s/60) + ":" + (Math.floor(s%60)).toString().padStart(2, '0');
-            document.getElementById('time').innerText = `${fmt(current)} / ${fmt(total)}`;
+            document.getElementById('time').innerText = `${fmt(cur)} / ${fmt(tot)}`;
             document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
         });
     }
