@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Sync Pro</title>
+    <title>AlphaTab Safari - Oscillator Unlock</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -16,13 +16,10 @@
         #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
         #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
         
-        /* Persistent Debug Log */
-        #debug-container { height: 80px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
+        #debug-container { height: 100px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
         #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
         
-        .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
-        .btn:active { transform: scale(0.95); }
-        
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); text-align: center; }
         
         .at-cursor-bar { background: rgba(233, 69, 96, 0.15) !important; }
@@ -63,7 +60,6 @@
 <script>
     const logBox = document.getElementById('debug-log');
     const log = (msg) => { 
-        console.log(msg); 
         logBox.innerText += "\n> " + msg; 
         logBox.scrollTop = logBox.scrollHeight; 
     };
@@ -77,10 +73,7 @@
         
         try {
             api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
-                core: { 
-                    fontDirectory: CDN + 'font/', 
-                    engine: 'svg' 
-                },
+                core: { fontDirectory: CDN + 'font/', engine: 'svg' },
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
@@ -91,17 +84,15 @@
 
             document.getElementById('app').classList.add('ready');
             log("UI Unlocked. Ready for file input.");
-
             setupControls();
 
-        } catch (e) { log("CRITICAL BOOT CRASH: " + e.message); }
+        } catch (e) { log("BOOT CRASH: " + e.message); }
     });
 
     function setupControls() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
 
-        // File Loading
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -114,17 +105,9 @@
             const reader = new FileReader();
             reader.onload = (args) => {
                 log("Sending data to AlphaTab...");
-                try {
-                    api.load(args.target.result);
-                } catch(err) {
-                    log("Parse Error: " + err.message);
-                }
+                api.load(args.target.result);
             };
             reader.readAsArrayBuffer(file);
-        });
-
-        api.renderFinished.on(() => {
-            log("Notation Rendered.");
         });
 
         api.playerReady.on(() => {
@@ -133,17 +116,38 @@
             btnPlay.style.background = "var(--accent)";
         });
 
-        // SAFARI FIX: NO ASYNC/AWAIT ALLOWED IN THIS HANDLER
         btnPlay.addEventListener('click', () => {
             log("Play Button Clicked");
             
             try {
-                // Synchronously tickle the AudioContext
-                if (api.player && api.player.synth && api.player.synth.audioContext) {
-                    if (api.player.synth.audioContext.state !== 'running') {
-                        log("Sending resume() to Context...");
-                        api.player.synth.audioContext.resume();
+                const actx = api.player?.synth?.audioContext;
+                
+                if (actx) {
+                    log("Context State Before: " + actx.state);
+                    
+                    // The Silent Oscillator Trick
+                    if (actx.state !== 'running') {
+                        log("Attempting to force-start oscillator...");
+                        const osc = actx.createOscillator();
+                        osc.type = 'sine';
+                        osc.frequency.value = 440; // 440Hz
+                        
+                        const gain = actx.createGain();
+                        gain.gain.value = 0; // MUTED (Silent)
+                        
+                        osc.connect(gain);
+                        gain.connect(actx.destination);
+                        
+                        osc.start(0);
+                        osc.stop(0.01); // Play for 1 millisecond
+                        
+                        // Fire the resume command
+                        actx.resume().then(() => {
+                            log("Context State After Resume: " + actx.state);
+                        });
                     }
+                } else {
+                    log("Warning: No internal AudioContext found.");
                 }
 
                 log("Calling api.playPause()...");
