@@ -587,27 +587,34 @@
     // stays tight to the audio. The native `timeupdate` event only fires
     // ~4 Hz, which is enough to make AlphaTab appear to hang before bar 1
     // until the first tick rolls in.
-    const pushPosition = () => {
-      // readyState < HAVE_METADATA (1) → audio.duration is still NaN,
-      // so AlphaTab's mapping would divide by a bogus denominator.
+        const pushPosition = () => {
       if (!iosAudio || iosAudio.readyState < 1) return;
       const output = api.player && api.player.output;
       if (!output || typeof output.updatePosition !== 'function') return;
-      // Clamp to the first sync point's audio offset so we never
-      // ask AlphaTab to interpolate backward (cursor stays on bar 1
-      // through the pre-roll silence).
-      const raw    = (iosAudio.currentTime || 0) * 1000;
-      const pushMs = Math.max(raw, iosFirstSyncMs);
-      output.updatePosition(pushMs);
+      
+      const raw = (iosAudio.currentTime || 0) * 1000;
+      
+      // Send the raw audio time directly. 
+      // Do not clamp to iosFirstSyncMs, or it will skip the intro bars!
+      output.updatePosition(raw);
     };
+
     // Only push while the audio is actually playing. Pushing from a
     // seeked event or before playback starts would feed updatePosition(0)
     // into AlphaTab and latch a wrong bar (assigning src + load() emits
     // a seeked to currentTime=0, which was the culprit on first load).
-    const pushPositionLoop = () => {
-      if (iosAudio && !iosAudio.paused) pushPosition();
+        const pushPositionLoop = () => {
+      if (iosAudio && !iosAudio.paused) {
+          pushPosition();
+          
+          // Visually hide the cursor if the audio is in the "negative tick" pre-roll phase
+          const isPreRoll = (iosAudio.currentTime * 1000) < (iosFirstSyncMs - 100);
+          document.querySelector('.at-cursor-bar').style.opacity = isPreRoll ? '0' : '1';
+          document.querySelector('.at-cursor-beat').style.opacity = isPreRoll ? '0' : '1';
+      }
       requestAnimationFrame(pushPositionLoop);
     };
+
     requestAnimationFrame(pushPositionLoop);
   }
 
