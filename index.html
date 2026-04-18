@@ -433,23 +433,23 @@
 
   /* ─── AlphaTab init ─── */
   const atEl = document.getElementById('at-element');
+  
   const api  = new alphaTab.AlphaTabApi(atEl, {
     core: {
       fontDirectory: CDN + 'font/'
     },
     display: {
-      layoutMode:   0,   // 0=Page, 1=Horizontal
-      staveProfile: 0,   // 0=Default, 1=Score, 2=Tab, 3=ScoreTab
+      layoutMode:   0,   
+      staveProfile: 0,   
       scale:        1.0
     },
-      
     player: {
       enablePlayer:  true,
       enableCursor:  true,
       soundFont:     CDN + 'soundfont/sonivox.sf2',
       
-      // Use the strict API Enum instead of the string!
-      playerMode: alphaTab.PlayerMode.EnabledAutomatic
+      // Use the integer 3 to strictly force the backing track
+      playerMode: 3 
     }
   });
 
