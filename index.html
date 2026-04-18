@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Sync Preserved</title>
+    <title>AlphaTab Safari - Ultimate Native Sync</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -68,7 +68,6 @@
     let api = null;
     let webAudioCtx = null;
     
-    // State flags for our conversion hack
     let isConverting = false;
     let wavApplied = false;
 
@@ -118,7 +117,7 @@
                     enablePlayer: true, 
                     enableCursor: true,          
                     enableUserInteraction: true,
-                    enableBackingTracks: true, // MUST BE TRUE to generate the OGG blob
+                    enableBackingTracks: true,
                     soundFont: CDN + 'soundfont/sonivox.sf2' 
                 }
             });
@@ -139,13 +138,12 @@
             
             document.getElementById('song-info').innerText = file.name;
             btnPlay.disabled = true;
+            btnPlay.innerText = "⏳";
             btnPlay.style.background = "#475569";
             
-            // RESET ALL HACK FLAGS FOR A NEW FILE
             isConverting = false;
             wavApplied = false;
             
-            // Clear any previous external backing track so AlphaTab parses the new embedded one
             api.settings.player.backingTrack = "";
             api.updateSettings();
             
@@ -155,20 +153,9 @@
             reader.readAsArrayBuffer(file);
         });
 
-        // --- THE SETTINGS RELOAD HACK ---
         api.playerReady.on(() => {
-            // If we've already done our magic, unlock the UI
-            if (wavApplied) {
-                log("Audio Engine Ready (Synced WAV Mode).");
-                btnPlay.disabled = false;
-                btnPlay.style.background = "var(--accent)";
-                return;
-            }
-            
-            // If currently converting, don't trigger again
-            if (isConverting) return;
+            if (wavApplied || isConverting) return; // Prevent loop
 
-            // Step 1: Scan for Safari's rejected OGG blob
             let foundUrl = null;
             const searchForAudio = (obj, depth = 0) => {
                 if(depth > 6 || !obj || foundUrl) return;
@@ -189,49 +176,57 @@
             if (foundUrl) {
                 log("Found AlphaTab's OGG Blob. Hijacking...");
                 isConverting = true;
-                btnPlay.innerText = "⏳";
                 
-                // Step 2: Fetch and Decode
                 fetch(foundUrl)
                     .then(res => res.arrayBuffer())
                     .then(buffer => new Promise((resolve, reject) => {
                         webAudioCtx.decodeAudioData(buffer, resolve, reject);
                     }))
                     .then(decodedData => {
-                        // Step 3: Convert to WAV
                         const wavBlob = audioBufferToWavBlob(decodedData);
                         const wavUrl = URL.createObjectURL(wavBlob);
                         
-                        log("WAV successfully generated! Reloading AlphaTab Sync Engine...");
+                        log("WAV successfully generated! Hot-swapping track...");
                         wavApplied = true;
                         
-                        // Step 4: Overwrite settings and force AlphaTab to reload natively
+                        // Apply the new track
                         api.settings.player.backingTrack = wavUrl;
                         api.updateSettings();
                         
-                        // Note: calling updateSettings() will re-trigger the playerReady event, 
-                        // which will hit our `if (wavApplied)` check at the top and unlock the Play button safely!
+                        // FIX: DO NOT WAIT FOR EVENT, UNLOCK UI IMMEDIATELY
+                        log("Audio Engine Ready (Synced WAV Mode).");
+                        btnPlay.innerText = "▶";
+                        btnPlay.disabled = false;
+                        btnPlay.style.background = "var(--accent)";
                     })
                     .catch(err => {
                         log("Conversion Error: " + err.message);
+                        btnPlay.innerText = "▶";
                         btnPlay.disabled = false;
                         btnPlay.style.background = "var(--accent)";
                     });
             } else {
                 log("No audio blob found (MIDI only file).");
+                btnPlay.innerText = "▶";
                 btnPlay.disabled = false;
                 btnPlay.style.background = "var(--accent)";
             }
         });
 
         btnPlay.addEventListener('click', () => {
-            // Guarantee WebAudio is awake for Safari
+            // Safari standard unlocks
             if (webAudioCtx.state === 'suspended') webAudioCtx.resume();
             if (api.player?.synth?.audioContext?.state !== 'running') {
                 api.player.synth.audioContext.resume();
             }
             
-            // Play normally!
+            // Safari tickle to ensure the new WAV isn't blocked by HTML5 policies
+            if (api.player && api.player.backingTrackAudio) {
+                api.player.backingTrackAudio.play().then(() => {
+                    if (api.player.state !== 1) api.player.backingTrackAudio.pause();
+                }).catch(e => log("Safari Play Block: " + e.message));
+            }
+
             api.playPause();
         });
 
