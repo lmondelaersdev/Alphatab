@@ -3,66 +3,95 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<title>AlphaTab Safari Pro - Stable Engine</title>
+<title>AlphaTab Safari - Stable GP8 Engine</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
 
 <style>
-:root { --accent:#e94560; --bg:#0f172a; --surface:#1e293b; --text:#e2e8f0; }
-
-body {
-    margin:0; height:100dvh; display:flex; flex-direction:column;
-    background:var(--bg); color:var(--text);
-    font-family:-apple-system, sans-serif; overflow:hidden;
+html, body {
+    height: 100%;
+    margin: 0;
+    background: #0f172a;
+    font-family: -apple-system, sans-serif;
+    overflow: hidden;
 }
 
-#app { flex:1; display:flex; flex-direction:column; opacity:0.1; pointer-events:none; transition:0.3s; }
-#app.ready { opacity:1; pointer-events:auto; }
-
-#header,#footer {
-    background:var(--surface);
-    padding:10px 15px;
-    display:flex;
-    align-items:center;
-    gap:10px;
+:root {
+    --accent:#e94560;
+    --surface:#1e293b;
+    --text:#e2e8f0;
 }
 
-#main { flex:1; background:white; overflow:auto; }
+#app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    opacity: 0.1;
+    pointer-events: none;
+}
+
+#app.ready {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#header, #footer {
+    background: var(--surface);
+    color: var(--text);
+    padding: 10px 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#main {
+    flex: 1;
+    background: white;
+    overflow: hidden;
+}
+
+#at {
+    width: 100%;
+    height: 100%;
+}
 
 .btn {
-    background:var(--accent);
-    border:none;
-    color:white;
-    padding:10px 16px;
-    border-radius:8px;
-    font-weight:700;
+    background: var(--accent);
+    border: none;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 700;
 }
 
-.btn:disabled { background:#475569; }
+.btn:disabled {
+    background: #475569;
+}
 
-.overlay {
-    position:absolute;
-    inset:0;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    background:var(--bg);
+#startup {
+    position: absolute;
+    inset: 0;
+    background: #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
 }
 
 #debug {
-    height:140px;
-    background:black;
-    color:#fbbf24;
-    font-size:11px;
-    overflow:auto;
-    padding:8px;
+    height: 120px;
+    background: black;
+    color: #fbbf24;
+    font-size: 11px;
+    overflow: auto;
+    padding: 8px;
 }
 </style>
 </head>
 
 <body>
 
-<div id="startup" class="overlay">
+<div id="startup">
     <button class="btn" id="boot">BOOT ENGINE</button>
 </div>
 
@@ -75,7 +104,9 @@ body {
     <input type="file" id="file" hidden />
 </div>
 
-<div id="main"><div id="at"></div></div>
+<div id="main">
+    <div id="at"></div>
+</div>
 
 <div id="footer">
     <button class="btn" id="play" disabled>▶</button>
@@ -87,8 +118,10 @@ body {
 <div id="debug"></div>
 
 <script>
-const log = m => {
+
+const log = (m) => {
     const el = document.getElementById('debug');
+    if (!el) return;
     el.innerText += "\n> " + m;
     el.scrollTop = el.scrollHeight;
 };
@@ -100,50 +133,126 @@ let audioCtx;
 let decodeCtx;
 
 let pendingWavUrl = null;
-
 let engineReady = false;
 let mediaReady = false;
-
-function tryUnlock() {
-    if (engineReady && mediaReady) {
-        document.getElementById("play").disabled = false;
-        log("READY: Engine + Media synced");
-    }
-}
+let booted = false;
 
 /* ---------------- BOOT ---------------- */
 document.getElementById("boot").onclick = async () => {
 
     log("Booting engine...");
 
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx = new AudioContext();
     await audioCtx.resume();
 
-    decodeCtx = new (window.AudioContext || window.webkitAudioContext)();
+    decodeCtx = new AudioContext();
     await decodeCtx.resume();
 
     api = new alphaTab.AlphaTabApi(document.getElementById("at"), {
-        core: { fontDirectory: CDN + "font/" },
+
+        core: {
+            fontDirectory: CDN + "font/"
+        },
+
+        display: {
+            scale: 1.0,
+            layoutMode: "page"
+        },
+
         player: {
             enablePlayer: true,
             enableCursor: true,
             enableBackingTracks: true,
+            scrollMode: "vertical",
             soundFont: CDN + "soundfont/sonivox.sf2"
         }
     });
 
+    bindApiEvents(); // 🔥 IMPORTANT FIX
+
     document.getElementById("startup").style.display = "none";
     document.getElementById("app").classList.add("ready");
 
+    booted = true;
+
     log("Engine online");
+    log("Boot complete");
 };
 
-/* ---------------- FILE LOAD ---------------- */
+/* ---------------- SAFE EVENT BINDING ---------------- */
+function bindApiEvents() {
+
+    if (!api) {
+        log("API not ready");
+        return;
+    }
+
+    api.scoreLoaded.on(async (score) => {
+
+        log("Score loaded");
+
+        if (!score.audioTracks?.length) {
+            mediaReady = true;
+            tryUnlock();
+            return;
+        }
+
+        try {
+            const track = score.audioTracks[0];
+
+            const ogg = track.data.buffer.slice(
+                track.data.byteOffset,
+                track.data.byteOffset + track.data.byteLength
+            );
+
+            log("Decoding audio...");
+
+            const decoded = await decodeCtx.decodeAudioData(ogg);
+
+            if (pendingWavUrl) URL.revokeObjectURL(pendingWavUrl);
+
+            const wavBlob = audioBufferToWav(decoded);
+            pendingWavUrl = URL.createObjectURL(wavBlob);
+
+            api.settings.player.backingTrack = pendingWavUrl;
+
+            mediaReady = true;
+            log("Backing track bound");
+
+            tryUnlock();
+
+        } catch (e) {
+            log("Decode error: " + e.message);
+            mediaReady = true;
+            tryUnlock();
+        }
+    });
+
+    api.playerReady.on(() => {
+
+        log("Player ready");
+
+        engineReady = true;
+        tryUnlock();
+
+        setTimeout(() => {
+            api.render?.();
+            api.resize?.();
+        }, 50);
+    });
+}
+
+/* ---------------- FILE LOAD (SAFE GATED) ---------------- */
 document.getElementById("file").onchange = (e) => {
+
+    if (!booted) {
+        log("Engine not booted yet");
+        return;
+    }
+
     const file = e.target.files[0];
     if (!file) return;
 
-    log("Loading: " + file.name);
     document.getElementById("info").innerText = file.name;
 
     engineReady = false;
@@ -154,55 +263,14 @@ document.getElementById("file").onchange = (e) => {
     reader.readAsArrayBuffer(file);
 };
 
-/* ---------------- SCORE LOADED ---------------- */
-api?.scoreLoaded?.on(async (score) => {
-
-    log("Score loaded");
-
-    if (!score.audioTracks?.length) {
-        mediaReady = true;
-        tryUnlock();
-        return;
+/* ---------------- UNLOCK LOGIC ---------------- */
+function tryUnlock() {
+    if (engineReady && mediaReady) {
+        const btn = document.getElementById("play");
+        btn.disabled = false;
+        log("READY: Engine + Media synced");
     }
-
-    try {
-        const track = score.audioTracks[0];
-
-        const ogg = track.data.buffer.slice(
-            track.data.byteOffset,
-            track.data.byteOffset + track.data.byteLength
-        );
-
-        log("Decoding OGG...");
-
-        const decoded = await decodeCtx.decodeAudioData(ogg);
-
-        if (pendingWavUrl) URL.revokeObjectURL(pendingWavUrl);
-
-        const wavBlob = audioBufferToWav(decoded);
-        pendingWavUrl = URL.createObjectURL(wavBlob);
-
-        // IMPORTANT: bind BEFORE engine locks playback graph
-        api.settings.player.backingTrack = pendingWavUrl;
-
-        log("Backing track bound");
-
-        mediaReady = true;
-        tryUnlock();
-
-    } catch (err) {
-        log("Decode error: " + err.message);
-        mediaReady = true;
-        tryUnlock();
-    }
-});
-
-/* ---------------- PLAYER READY ---------------- */
-api?.playerReady?.on(() => {
-    log("Player ready");
-    engineReady = true;
-    tryUnlock();
-});
+}
 
 /* ---------------- PLAY ---------------- */
 document.getElementById("play").onclick = () => {
@@ -258,6 +326,7 @@ function audioBufferToWav(buffer) {
 
     return new Blob([ab], { type: "audio/wav" });
 }
+
 </script>
 
 </body>
