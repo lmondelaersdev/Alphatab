@@ -539,6 +539,22 @@
   api.renderStarted.on(() => loadOverlay.classList.remove('hidden'));
   api.postRenderFinished.on(() => loadOverlay.classList.add('hidden'));
 
+    /* ─── iOS Audio Unlocker ─── */
+  let iosAudioUnlocked = false;
+  
+  // Listen for the very first click anywhere on the screen
+  document.body.addEventListener('touchstart', function unlockAudio() {
+      if (iosAudioUnlocked) return;
+      
+      // Force AlphaTab to initialize its audio context immediately
+      if (api.isReadyForPlayback) {
+          api.playPause(); 
+          api.playPause(); // Play and immediately pause to unlock the engine
+          iosAudioUnlocked = true;
+          document.body.removeEventListener('touchstart', unlockAudio);
+      }
+  }, { once: true });
+
   /* ─── Playback controls ─── */
   const btnPlay  = document.getElementById('btn-play');
   const btnStop  = document.getElementById('btn-stop');
