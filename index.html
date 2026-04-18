@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - The Bait & Switch</title>
+    <title>AlphaTab Safari - Search & Convert</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -68,6 +68,7 @@
     let api = null;
     let webAudioCtx = null;
     let isHijacked = false;
+    let globalAudioElement = null; // Store it once we find it
 
     // --- RAW AUDIO TO WAV CONVERTER ---
     function audioBufferToWavBlob(buffer) {
@@ -114,7 +115,7 @@
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
-                    enableBackingTracks: true, // We leave this ON so AlphaTab extracts the blob
+                    enableBackingTracks: true, // Left ON so AlphaTab mounts the OGG
                     soundFont: CDN + 'soundfont/sonivox.sf2' 
                 }
             });
@@ -136,7 +137,10 @@
             document.getElementById('song-info').innerText = file.name;
             btnPlay.disabled = true;
             btnPlay.style.background = "#475569";
-            isHijacked = false; // Reset for new file
+            
+            // Reset flags
+            isHijacked = false; 
+            globalAudioElement = null;
             
             log("Loading file...");
             const reader = new FileReader();
@@ -144,43 +148,60 @@
             reader.readAsArrayBuffer(file);
         });
 
-        // --- THE BAIT AND SWITCH ---
+        // --- THE DEEP MEMORY SCANNER ---
         api.playerReady.on(() => {
-            // Check if AlphaTab created a backing track element with a Blob URL
-            if (!isHijacked && api.player && api.player.backingTrackAudio && api.player.backingTrackAudio.src) {
-                isHijacked = true;
-                log("Audio Engine Ready! Hijacking internal audio stream...");
+            if (isHijacked) return; // Prevent loop
+            isHijacked = true;
+            
+            log("Audio Engine Ready! Hunting for hidden audio element...");
+            
+            // Recursive scan for HTMLAudioElement
+            const searchForAudio = (obj, depth = 0) => {
+                if(depth > 6 || !obj || globalAudioElement) return;
+                for(let key in obj) {
+                    try {
+                        if(obj[key] instanceof HTMLAudioElement && obj[key].src) {
+                            globalAudioElement = obj[key];
+                            return;
+                        } else if (typeof obj[key] === 'object') {
+                            searchForAudio(obj[key], depth + 1);
+                        }
+                    } catch(e){}
+                }
+            };
+            
+            searchForAudio(api);
+
+            if (globalAudioElement && globalAudioElement.src) {
+                log("Got it! Fetching raw audio data...");
+                const originalUrl = globalAudioElement.src;
                 
-                const originalUrl = api.player.backingTrackAudio.src;
-                
-                // Fetch the Blob AlphaTab created
                 fetch(originalUrl)
                     .then(res => res.arrayBuffer())
                     .then(buffer => {
-                        log("Decoding Safari-Hostile OGG format...");
+                        log("Decoding Safari-Hostile format...");
                         return webAudioCtx.decodeAudioData(buffer);
                     })
                     .then(decodedData => {
-                        // Convert to WAV
                         const wavBlob = audioBufferToWavBlob(decodedData);
                         const wavUrl = URL.createObjectURL(wavBlob);
                         
-                        log("Replacing with Safari-Friendly WAV...");
-                        // Swap it directly in the HTML element
-                        api.player.backingTrackAudio.src = wavUrl;
-                        api.player.backingTrackAudio.load(); // Force Safari to recognize the new file
+                        log("Swapping internal source with WAV...");
+                        globalAudioElement.src = wavUrl;
+                        globalAudioElement.load(); 
                         
                         log("SUCCESS: Hijack complete. Sync engine preserved!");
                         btnPlay.disabled = false;
                         btnPlay.style.background = "var(--accent)";
                     })
                     .catch(err => {
-                        log("Hijack Error: " + err.message);
+                        log("Conversion Error: " + err.message);
+                        // Unlock anyway in case MIDI fallback works
                         btnPlay.disabled = false;
                         btnPlay.style.background = "var(--accent)";
                     });
-            } else if (!isHijacked) {
-                log("Audio Engine Ready! No internal audio found.");
+            } else {
+                log("Could not locate internal audio element. (MIDI Only?)");
                 btnPlay.disabled = false;
                 btnPlay.style.background = "var(--accent)";
             }
@@ -196,10 +217,11 @@
                 }
             }
 
-            if(api.player && api.player.backingTrackAudio) {
-                api.player.backingTrackAudio.play().then(() => {
-                    if (api.player.state !== 1) api.player.backingTrackAudio.pause();
-                }).catch(e => log("Safari HTML5 Audio Block: " + e.message));
+            // If we captured the audio element, force Safari to play it natively on the physical click
+            if (globalAudioElement) {
+                globalAudioElement.play().then(() => {
+                    if (api.player.state !== 1) globalAudioElement.pause(); // keep synced with engine state
+                }).catch(e => log("Safari Block: " + e.message));
             }
 
             api.playPause();
