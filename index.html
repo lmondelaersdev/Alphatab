@@ -477,13 +477,14 @@
 
   /* ─── iOS external-media pipeline ───
    * One <audio> element, kept in the DOM across files, driven by the
-   * AlphaTab IExternalMediaHandler interface. The element is created up
-   * front so the first user tap can prime it; later file loads only swap
-   * the blob URL and iOS keeps allowing play() calls.
+   * AlphaTab IExternalMediaHandler interface. The tap on our Play button
+   * is itself a user gesture — it calls AlphaTab, which synchronously
+   * calls handler.play(), which calls audio.play() — so iOS accepts it
+   * without any pre-priming dance (and an explicit priming call would
+   * race the tap's own playback and instantly pause the audio).
    */
-  let iosAudio       = null;
-  let iosBlobUrl     = null;
-  let iosPrimed      = false;
+  let iosAudio        = null;
+  let iosBlobUrl      = null;
   let iosHandlerWired = false;
   let iosPlaybackRate = 1;
   let iosMasterVolume = 1;
@@ -567,15 +568,23 @@
       setTimeout(() => clearInterval(t), 10000);
     }
 
-    // Report position back to AlphaTab so the cursor tracks the audio.
+    // Push position to AlphaTab at display-refresh rate so the cursor
+    // stays tight to the audio. The native `timeupdate` event only fires
+    // ~4 Hz, which is enough to make AlphaTab appear to hang before bar 1
+    // until the first tick rolls in.
     const pushPosition = () => {
       const output = api.player && api.player.output;
       if (output && typeof output.updatePosition === 'function') {
         output.updatePosition((iosAudio.currentTime || 0) * 1000);
       }
     };
-    iosAudio.addEventListener('timeupdate', pushPosition);
-    iosAudio.addEventListener('seeked',     pushPosition);
+    const pushPositionLoop = () => {
+      if (iosAudio && !iosAudio.paused) pushPosition();
+      requestAnimationFrame(pushPositionLoop);
+    };
+    requestAnimationFrame(pushPositionLoop);
+    // Seeks happen while paused — push once so the cursor snaps.
+    iosAudio.addEventListener('seeked', pushPosition);
   }
 
     
@@ -598,27 +607,10 @@
     reader.readAsArrayBuffer(file);
   }
 
-  /* Primes the iOS <audio> element inside a user gesture. After this
-   * first successful play(), iOS remembers the element as user-activated,
-   * so later async src changes (blob: URLs from GP files) can be played
-   * without a fresh tap.
-   */
-  function primeIosAudio() {
-    if (!isIOS || iosPrimed || !iosAudio) return;
-    iosPrimed = true;
-    const p = iosAudio.play();
-    if (p && typeof p.catch === 'function') {
-      p.then(() => iosAudio.pause()).catch(() => { iosPrimed = false; });
-    }
-  }
-
-  document.getElementById('btn-open').addEventListener('click', () => {
-    primeIosAudio();
-    fileInput.click();
-  });
+  document.getElementById('btn-open').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
 
-  dropBox.addEventListener('click', () => { primeIosAudio(); fileInput.click(); });
+  dropBox.addEventListener('click', () => fileInput.click());
 
   viewport.addEventListener('dragover', e => { e.preventDefault(); dropBox.classList.add('drag-over'); });
   viewport.addEventListener('dragleave', () => dropBox.classList.remove('drag-over'));
@@ -701,7 +693,7 @@
   const timeDsp  = document.getElementById('time');
   const progFill = document.getElementById('prog-fill');
 
-  btnPlay.addEventListener('click',  () => { primeIosAudio(); api.playPause(); });
+  btnPlay.addEventListener('click',  () => api.playPause());
   btnStop.addEventListener('click',  () => api.stop());
 
   btnLoop.addEventListener('click', () => {
