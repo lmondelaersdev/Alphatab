@@ -1,333 +1,167 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<title>AlphaTab Safari - Stable GP8 Engine</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
-
-<style>
-html, body {
-    height: 100%;
-    margin: 0;
-    background: #0f172a;
-    font-family: -apple-system, sans-serif;
-    overflow: hidden;
-}
-
-:root {
-    --accent:#e94560;
-    --surface:#1e293b;
-    --text:#e2e8f0;
-}
-
-#app {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    opacity: 0.1;
-    pointer-events: none;
-}
-
-#app.ready {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-#header, #footer {
-    background: var(--surface);
-    color: var(--text);
-    padding: 10px 15px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-#main {
-    flex: 1;
-    background: white;
-    overflow: hidden;
-}
-
-#at {
-    width: 100%;
-    height: 100%;
-}
-
-.btn {
-    background: var(--accent);
-    border: none;
-    color: white;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-weight: 700;
-}
-
-.btn:disabled {
-    background: #475569;
-}
-
-#startup {
-    position: absolute;
-    inset: 0;
-    background: #0f172a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 999;
-}
-
-#debug {
-    height: 120px;
-    background: black;
-    color: #fbbf24;
-    font-size: 11px;
-    overflow: auto;
-    padding: 8px;
-}
-</style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>AlphaTab Safari - Production Media Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
+    <style>
+        :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
+        body { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
+        #app { display: flex; flex-direction: column; flex: 1; opacity: 0.1; pointer-events: none; transition: opacity 0.4s; }
+        #app.ready { opacity: 1; pointer-events: all; }
+        #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid #334155; flex-shrink: 0; }
+        #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
+        #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
+        #debug-container { height: 140px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
+        #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn:disabled { opacity: 0.5; cursor: wait; }
+        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: var(--bg); }
+    </style>
 </head>
-
 <body>
 
-<div id="startup">
-    <button class="btn" id="boot">BOOT ENGINE</button>
+<div id="startup-screen" class="overlay">
+    <button class="btn" id="btn-initialize" style="padding: 15px 30px; font-size: 1.2rem;">BOOT ENGINE</button>
 </div>
 
 <div id="app">
-
-<div id="header">
-    <div style="color:var(--accent); font-weight:800;">AlphaTab</div>
-    <div id="info" style="flex:1; opacity:.7;">Load GP8 file</div>
-    <button class="btn" onclick="document.getElementById('file').click()">Open</button>
-    <input type="file" id="file" hidden />
+    <div id="header">
+        <div style="font-weight: 800; color: var(--accent);">AlphaTab Pro</div>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; padding-left: 10px;">Load GP8...</div>
+        <button class="btn" style="padding: 8px 12px;" onclick="document.getElementById('file-input').click()">📁 Open</button>
+        <input type="file" id="file-input" style="display:none" />
+    </div>
+    <div id="main"><div id="at-element"></div></div>
+    <div id="footer">
+        <button class="btn" id="btn-play" disabled style="width: 60px; height: 50px; font-size: 1.5rem;">▶</button>
+        <div style="flex:1;">
+            <div id="time" style="font-size: 0.8rem; font-family: monospace; color: #94a3b8;">0:00 / 0:00</div>
+            <div style="height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 4px;">
+                <div id="prog-fill" style="height: 100%; background: var(--accent); width: 0%;"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<div id="main">
-    <div id="at"></div>
-</div>
-
-<div id="footer">
-    <button class="btn" id="play" disabled>▶</button>
-    <div id="time" style="flex:1; font-family:monospace;">0:00 / 0:00</div>
-</div>
-
-</div>
-
-<div id="debug"></div>
+<div id="debug-container"><pre id="debug-log">Engine Offline.</pre></div>
 
 <script>
+    const log = (m) => { const l = document.getElementById('debug-log'); l.innerText += "\n> " + m; l.scrollTop = l.scrollHeight; };
+    const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
+    
+    let api, audioCtx;
+    let currentWavUrl = null;
 
-const log = (m) => {
-    const el = document.getElementById('debug');
-    if (!el) return;
-    el.innerText += "\n> " + m;
-    el.scrollTop = el.scrollHeight;
-};
+    // --- 1. BOOT PHASE (Gesture Required) ---
+    document.getElementById('btn-initialize').onclick = async function() {
+        this.disabled = true;
+        log("Initial Gesture Received. Building Audio Graph...");
+        
+        // Persistent AudioContext
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        await audioCtx.resume();
+        
+        api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
+            core: { fontDirectory: CDN + 'font/' },
+            player: { 
+                enablePlayer: true, 
+                enableCursor: true, 
+                enableBackingTracks: true, 
+                soundFont: CDN + 'soundfont/sonivox.sf2' 
+            }
+        });
 
-const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
-
-let api;
-let audioCtx;
-let decodeCtx;
-
-let pendingWavUrl = null;
-let engineReady = false;
-let mediaReady = false;
-let booted = false;
-
-/* ---------------- BOOT ---------------- */
-document.getElementById("boot").onclick = async () => {
-
-    log("Booting engine...");
-
-    audioCtx = new AudioContext();
-    await audioCtx.resume();
-
-    decodeCtx = new AudioContext();
-    await decodeCtx.resume();
-
-    api = new alphaTab.AlphaTabApi(document.getElementById("at"), {
-
-        core: {
-            fontDirectory: CDN + "font/"
-        },
-
-        display: {
-            scale: 1.0,
-            layoutMode: "page"
-        },
-
-        player: {
-            enablePlayer: true,
-            enableCursor: true,
-            enableBackingTracks: true,
-            scrollMode: "vertical",
-            soundFont: CDN + "soundfont/sonivox.sf2"
-        }
-    });
-
-    bindApiEvents(); // 🔥 IMPORTANT FIX
-
-    document.getElementById("startup").style.display = "none";
-    document.getElementById("app").classList.add("ready");
-
-    booted = true;
-
-    log("Engine online");
-    log("Boot complete");
-};
-
-/* ---------------- SAFE EVENT BINDING ---------------- */
-function bindApiEvents() {
-
-    if (!api) {
-        log("API not ready");
-        return;
-    }
-
-    api.scoreLoaded.on(async (score) => {
-
-        log("Score loaded");
-
-        if (!score.audioTracks?.length) {
-            mediaReady = true;
-            tryUnlock();
-            return;
-        }
-
-        try {
+        // --- 2. THE SINGLE-PASS INTERCEPTION ---
+        api.scoreLoaded.on(async (score) => {
+            if (!score.audioTracks || !score.audioTracks.length) return log("No backing track.");
+            
+            log("Score Loaded. Intercepting OGG data...");
             const track = score.audioTracks[0];
+            const oggBuffer = track.data.buffer.slice(track.data.byteOffset, track.data.byteOffset + track.data.byteLength);
 
-            const ogg = track.data.buffer.slice(
-                track.data.byteOffset,
-                track.data.byteOffset + track.data.byteLength
-            );
+            try {
+                // Async processing outside the gesture loop
+                const decoded = await audioCtx.decodeAudioData(oggBuffer);
+                const wavBlob = audioBufferToWavBlob(decoded);
+                
+                if (currentWavUrl) URL.revokeObjectURL(currentWavUrl);
+                currentWavUrl = URL.createObjectURL(wavBlob);
 
-            log("Decoding audio...");
+                log("Injecting WAV and Finalizing Sync Map...");
+                api.settings.player.backingTrack = currentWavUrl;
+                
+                // Declare settings change BEFORE playerReady finalization
+                api.updateSettings(); 
+            } catch (e) { log("Conversion failed: " + e.message); }
+        });
 
-            const decoded = await decodeCtx.decodeAudioData(ogg);
+        api.playerReady.on(() => {
+            log("Player Engine Finalized.");
+            const btn = document.getElementById('btn-play');
+            btn.disabled = false;
+            btn.innerText = "▶";
+        });
 
-            if (pendingWavUrl) URL.revokeObjectURL(pendingWavUrl);
+        document.getElementById('startup-screen').style.display = 'none';
+        document.getElementById('app').classList.add('ready');
+        log("Engine Online. Context state: " + audioCtx.state);
+    };
 
-            const wavBlob = audioBufferToWav(decoded);
-            pendingWavUrl = URL.createObjectURL(wavBlob);
-
-            api.settings.player.backingTrack = pendingWavUrl;
-
-            mediaReady = true;
-            log("Backing track bound");
-
-            tryUnlock();
-
-        } catch (e) {
-            log("Decode error: " + e.message);
-            mediaReady = true;
-            tryUnlock();
+    // --- 3. GESTURE-SAFE PLAYBACK (Strictly Synchronous) ---
+    document.getElementById('btn-play').onclick = () => {
+        log("Play Request. Handshaking graph...");
+        
+        // Ensure graph is active (sync call)
+        if (audioCtx.state !== 'running') audioCtx.resume();
+        if (api.player?.synth?.audioContext?.state !== 'running') {
+            api.player.synth.audioContext.resume();
         }
-    });
 
-    api.playerReady.on(() => {
+        api.playPause();
+    };
 
-        log("Player ready");
-
-        engineReady = true;
-        tryUnlock();
-
-        setTimeout(() => {
-            api.render?.();
-            api.resize?.();
-        }, 50);
-    });
-}
-
-/* ---------------- FILE LOAD (SAFE GATED) ---------------- */
-document.getElementById("file").onchange = (e) => {
-
-    if (!booted) {
-        log("Engine not booted yet");
-        return;
-    }
-
-    const file = e.target.files[0];
-    if (!file) return;
-
-    document.getElementById("info").innerText = file.name;
-
-    engineReady = false;
-    mediaReady = false;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => api.load(ev.target.result);
-    reader.readAsArrayBuffer(file);
-};
-
-/* ---------------- UNLOCK LOGIC ---------------- */
-function tryUnlock() {
-    if (engineReady && mediaReady) {
-        const btn = document.getElementById("play");
-        btn.disabled = false;
-        log("READY: Engine + Media synced");
-    }
-}
-
-/* ---------------- PLAY ---------------- */
-document.getElementById("play").onclick = () => {
-
-    if (audioCtx.state !== "running") audioCtx.resume();
-    if (api.player?.synth?.audioContext?.state !== "running") {
-        api.player.synth.audioContext.resume();
-    }
-
-    api.playPause();
-};
-
-/* ---------------- WAV ENCODER ---------------- */
-function audioBufferToWav(buffer) {
-    const num = buffer.numberOfChannels;
-    const len = buffer.length * num * 2 + 44;
-
-    const ab = new ArrayBuffer(len);
-    const view = new DataView(ab);
-
-    let pos = 0;
-
-    const w16 = v => { view.setUint16(pos, v, true); pos += 2; };
-    const w32 = v => { view.setUint32(pos, v, true); pos += 4; };
-
-    w32(0x46464952);
-    w32(len - 8);
-    w32(0x45564157);
-    w32(0x20746d66);
-    w32(16);
-    w16(1);
-    w16(num);
-    w32(buffer.sampleRate);
-    w32(buffer.sampleRate * 2 * num);
-    w16(num * 2);
-    w16(16);
-    w32(0x61746164);
-    w32(len - pos - 4);
-
-    const chans = [];
-    for (let i = 0; i < num; i++) chans.push(buffer.getChannelData(i));
-
-    let o = 0;
-
-    while (pos < len) {
-        for (let i = 0; i < num; i++) {
-            let s = Math.max(-1, Math.min(1, chans[i][o]));
-            view.setInt16(pos, s < 0 ? s * 32768 : s * 32767, true);
-            pos += 2;
+    // --- 4. WAV ENCODER ---
+    function audioBufferToWavBlob(buffer) {
+        const numOfChan = buffer.numberOfChannels, length = buffer.length * numOfChan * 2 + 44;
+        const out = new ArrayBuffer(length), view = new DataView(out);
+        let pos = 0;
+        const set16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
+        const set32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
+        set32(0x46464952); set32(length - 8); set32(0x45564157); set32(0x20746d66);
+        set32(16); set16(1); set16(numOfChan); set32(buffer.sampleRate);
+        set32(buffer.sampleRate * 2 * numOfChan); set16(numOfChan * 2); set16(16);
+        set32(0x61746164); set32(length - pos - 4);
+        for(let i = 0; i < buffer.length; i++) {
+            for(let c = 0; c < numOfChan; c++) {
+                let s = Math.max(-1, Math.min(1, buffer.getChannelData(c)[i]));
+                view.setInt16(pos, s < 0 ? s * 32768 : s * 32767, true); pos += 2;
+            }
         }
-        o++;
+        return new Blob([out], {type: "audio/wav"});
     }
 
-    return new Blob([ab], { type: "audio/wav" });
-}
+    // File Input Wrapper
+    document.getElementById('file-input').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('song-info').innerText = file.name;
+        document.getElementById('btn-play').disabled = true;
+        document.getElementById('btn-play').innerText = "⏳";
+        const reader = new FileReader();
+        reader.onload = (args) => api.load(args.target.result);
+        reader.readAsArrayBuffer(file);
+    };
 
+    // Standard UI Listeners
+    api?.playerStateChanged?.on(e => { document.getElementById('btn-play').innerText = e.state === 1 ? '⏸' : '▶'; });
+    api?.playerPositionChanged?.on(e => {
+        const cur = e.currentTime / 1000, tot = e.endTime / 1000;
+        const fmt = (s) => isNaN(s) ? "0:00" : Math.floor(s/60) + ":" + (Math.floor(s%60)).toString().padStart(2, '0');
+        document.getElementById('time').innerText = `${fmt(cur)} / ${fmt(tot)}`;
+        document.getElementById('prog-fill').style.width = ((e.currentTime / e.endTime) * 100 || 0) + '%';
+    });
 </script>
-
 </body>
 </html>
