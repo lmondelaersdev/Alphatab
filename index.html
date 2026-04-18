@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Search & Rescue</title>
+    <title>AlphaTab Safari - The WAV Hack</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
@@ -16,7 +16,7 @@
         #main { flex: 1; overflow-y: auto; background: #fff; position: relative; }
         #footer { height: 70px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; }
         
-        #debug-container { height: 120px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
+        #debug-container { height: 140px; background: #000; padding: 8px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; }
         #debug-log { font-size: 11px; color: #fbbf24; font-family: monospace; height: 100%; overflow-y: auto; margin: 0; white-space: pre-wrap; }
         
         .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
@@ -43,7 +43,7 @@
     <div id="main"><div id="at-element"></div></div>
 
     <div id="footer">
-        <button class="btn" id="btn-play" style="width: 60px; height: 50px; font-size: 1.5rem; background: #475569;">▶</button>
+        <button class="btn" id="btn-play" disabled style="width: 60px; height: 50px; font-size: 1.5rem; background: #475569;">▶</button>
         <div style="flex:1;">
             <div id="time" style="font-size: 0.8rem; font-family: monospace; color: #94a3b8; margin-bottom: 4px;">0:00 / 0:00</div>
             <div style="height: 6px; background: #334155; border-radius: 3px; overflow: hidden;">
@@ -54,7 +54,7 @@
 </div>
 
 <div id="debug-container">
-    <pre id="debug-log">System booted. Catching browser errors...</pre>
+    <pre id="debug-log">System booted. Awaiting initialization...</pre>
 </div>
 
 <script>
@@ -64,17 +64,59 @@
         logBox.scrollTop = logBox.scrollHeight; 
     };
 
-    // --- SAFARI SILENT ERROR CATCHER ---
-    window.addEventListener('unhandledrejection', (e) => {
-        log("BROWSER BLOCKED AUDIO: " + (e.reason ? (e.reason.message || e.reason) : "Unknown Autoplay Error"));
-    });
-    
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     let api = null;
+    let webAudioCtx = null;
+
+    // --- RAW AUDIO TO WAV CONVERTER ---
+    function audioBufferToWavBlob(buffer) {
+        log("Converting decoded audio to WAV format...");
+        const numOfChan = buffer.numberOfChannels;
+        const length = buffer.length * numOfChan * 2 + 44;
+        const out = new ArrayBuffer(length);
+        const view = new DataView(out);
+        const channels = [];
+        let sample = 0, offset = 0, pos = 0;
+
+        // Write WAV Header
+        const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
+        const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
+
+        setUint32(0x46464952); // "RIFF"
+        setUint32(length - 8); // file length - 8
+        setUint32(0x45564157); // "WAVE"
+        setUint32(0x20746d66); // "fmt " chunk
+        setUint32(16); // length = 16
+        setUint16(1); // PCM
+        setUint16(numOfChan);
+        setUint32(buffer.sampleRate);
+        setUint32(buffer.sampleRate * 2 * numOfChan); // byte rate
+        setUint16(numOfChan * 2); // block-align
+        setUint16(16); // 16-bit
+        setUint32(0x61746164); // "data" chunk
+        setUint32(length - pos - 4); // chunk length
+
+        for(let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+        while(pos < length) {
+            for(let i = 0; i < numOfChan; i++) {
+                sample = Math.max(-1, Math.min(1, channels[i][offset])); 
+                sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; 
+                view.setInt16(pos, sample, true); 
+                pos += 2;
+            }
+            offset++;
+        }
+        log("WAV conversion complete!");
+        return new Blob([out], {type: "audio/wav"});
+    }
 
     document.getElementById('btn-initialize').addEventListener('click', function() {
         document.getElementById('startup-screen').style.display = 'none';
         log("Booting API...");
+        
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        webAudioCtx = new AudioContext();
         
         try {
             api = new alphaTab.AlphaTabApi(document.getElementById('at-element'), {
@@ -82,7 +124,8 @@
                 player: { 
                     enablePlayer: true, 
                     enableCursor: true,          
-                    enableBackingTracks: true
+                    enableBackingTracks: true, // Needs to be true for native sync
+                    soundFont: CDN + 'soundfont/sonivox.sf2' 
                 }
             });
 
@@ -100,62 +143,70 @@
             const file = e.target.files[0];
             if (!file) return;
             
-            log("Reading file: " + file.name);
             document.getElementById('song-info').innerText = file.name;
+            btnPlay.disabled = true;
             btnPlay.style.background = "#475569";
             
             const reader = new FileReader();
-            reader.onload = (args) => {
-                api.load(args.target.result);
-            };
+            reader.onload = (args) => { api.load(args.target.result); };
             reader.readAsArrayBuffer(file);
         });
 
-        api.playerReady.on(() => {
-            log("Audio Engine Ready!");
-            btnPlay.style.background = "var(--accent)";
+        // --- INTERCEPT AND REPLACE BACKING TRACK ---
+        api.scoreLoaded.on((score) => {
+            if (score.audioTracks && score.audioTracks.length > 0) {
+                log("Embedded audio detected. Decoding via WebAudio...");
+                const data = score.audioTracks[0].data;
+                const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+
+                webAudioCtx.decodeAudioData(arrayBuffer, 
+                    function(buffer) {
+                        // 1. Convert to WAV Blob
+                        const wavBlob = audioBufferToWavBlob(buffer);
+                        // 2. Create local URL
+                        const wavUrl = URL.createObjectURL(wavBlob);
+                        
+                        log("Attaching Safari-friendly WAV to AlphaTab...");
+                        // 3. Inject it into AlphaTab's engine
+                        api.settings.player.backingTrack = wavUrl;
+                        api.updateSettings();
+                        
+                        btnPlay.disabled = false;
+                        btnPlay.style.background = "var(--accent)";
+                    },
+                    function(err) {
+                        log("DECODE ERROR: Safari failed to read the OGG file.");
+                    }
+                );
+            } else {
+                log("No audio track found in file.");
+                btnPlay.disabled = false;
+                btnPlay.style.background = "var(--accent)";
+            }
         });
 
+        // SAFARI AUDIO UNLOCK
         btnPlay.addEventListener('click', () => {
-            log("Play Clicked");
+            if (webAudioCtx.state === 'suspended') webAudioCtx.resume();
             
-            // --- SEARCH AND RESCUE THE HIDDEN AUDIO ELEMENT ---
-            let foundAudioElement = false;
-            
-            const searchForAudio = (obj, depth = 0) => {
-                if(depth > 4 || !obj || foundAudioElement) return;
-                for(let key in obj) {
-                    try {
-                        if(obj[key] instanceof HTMLAudioElement) {
-                            foundAudioElement = true;
-                            log("Found hidden Safari Audio element! Forcing play...");
-                            
-                            // FORCE PLAY DIRECTLY ON THE CLICK
-                            obj[key].play().then(() => {
-                                log("Safari allowed the backing track to play!");
-                            }).catch(err => {
-                                log("Safari blocked the backing track: " + err.message);
-                            });
-                        } else if (typeof obj[key] === 'object') {
-                            searchForAudio(obj[key], depth + 1);
-                        }
-                    } catch(e){}
+            // Safari tickle
+            if (api.player && api.player.synth && api.player.synth.audioContext) {
+                if (api.player.synth.audioContext.state !== 'running') {
+                    api.player.synth.audioContext.resume();
                 }
-            };
-            
-            // Scan AlphaTab's memory
-            searchForAudio(api);
-            
-            if(!foundAudioElement) {
-                log("Warning: No HTMLAudioElement found in memory.");
             }
 
-            // Normal play routine
+            // If AlphaTab created the internal audio tag for our new WAV, tickle it too
+            if(api.player && api.player.backingTrackAudio) {
+                api.player.backingTrackAudio.play().then(() => {
+                    if (api.player.state !== 1) api.player.backingTrackAudio.pause();
+                }).catch(e => log("Safari HTML5 Audio Block: " + e.message));
+            }
+
             api.playPause();
         });
 
         api.playerStateChanged.on(e => {
-            log("State: " + e.state);
             btnPlay.innerText = (e.state === 1) ? '⏸' : '▶';
         });
 
