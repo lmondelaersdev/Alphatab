@@ -19,35 +19,29 @@
         #footer { height: 56px; background: var(--surface); display: flex; align-items: center; padding: 0 12px; gap: 12px; flex-shrink: 0; }
         #debug-container { height: 80px; background: #000; padding: 6px 15px; border-top: 2px solid var(--accent); flex-shrink: 0; box-sizing: border-box; display: none; }
 
-        /* Toggle pills in header */
         .tgl { background: #334155; color: #94a3b8; border: none; width: 32px; height: 32px; border-radius: 6px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
         .tgl.on { background: var(--accent); color: white; }
 
-        /* alphaTab playback cursor */
         .at-cursor-bar  { background: rgba(255, 242, 0, 0.25); }
         .at-cursor-beat { background: var(--accent); width: 3px; }
         .at-selection div { background: rgba(233, 69, 96, 0.1); }
         .at-highlight * { fill: var(--accent) !important; stroke: var(--accent) !important; }
 
-        /* Sync offset row */
         #sync-row { height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; }
         .sbtn { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; min-width: 36px; font-weight: bold; }
         .sbtn:active { background: var(--accent); }
         .sbtn.on { background: var(--accent); }
         #sync-display { flex: 1; text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; }
 
-        /* Practice row */
         #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
         #practice-row .sep { color: #475569; }
         #practice-row select { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; max-width: 110px; }
         #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; }
 
-        /* Fretboard */
         #fretboard-container { height: 125px; background: #1a120c; border-top: 1px solid #334155; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; -webkit-overflow-scrolling: touch; position: relative; }
         #fretboard-container svg { display: block; height: 100%; }
         .fb-dot { transition: fill 90ms linear, stroke 90ms linear, r 90ms linear; pointer-events: none; }
         
-        /* New Theory Elements */
         .fb-text { font-size: 6.5px; font-family: sans-serif; font-weight: bold; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; opacity: 0; transition: opacity 90ms linear; }
         #fb-chord-label { position: absolute; top: 4px; left: 8px; font-size: 0.8rem; color: #3b82f6; font-family: sans-serif; font-weight: 800; pointer-events: all; cursor: pointer; z-index: 2; }
         
@@ -168,8 +162,9 @@
     let activeChordName = "";
     let extCycle = 0;
     let baseChord = "";
-    // Note: AlphaTab string 1 is Low E (lowest pitch). Mapped 40 (Low E) to 64 (High E).
-    const standardTuningMidi = [40, 45, 50, 55, 59, 64]; 
+    
+    // High E (64) down to Low E (40)
+    const standardTuningMidi = [64, 59, 55, 50, 45, 40]; 
 
     // ─────────────────────────────────────────────────────────────────────
     // FRETBOARD VISUALIZATION
@@ -223,20 +218,22 @@
             parts.push(`<text x="${x}" y="${boardBot + 11}" text-anchor="middle" font-size="9" fill="#7a6450" font-family="monospace">${f}</text>`);
         }
 
-        // Strings (INVERTED Y-AXIS: s=6 is Top/High E, s=1 is Bottom/Low E)
+        // Strings (Restored to Top-Down: s=1 is Top/High E, s=6 is Bottom/Low E)
         for (let s = 1; s <= FB.strings; s++) {
-            const y = FB.padTop + (FB.strings - s) * FB.stringGap;
-            const thickness = 0.8 + (FB.strings - s) * 0.25;
+            const y = FB.padTop + (s - 1) * FB.stringGap;
+            const thickness = 0.8 + (s - 1) * 0.25;
             parts.push(`<line x1="${stringX0}" y1="${y}" x2="${stringX1}" y2="${y}" stroke="#d8d8d8" stroke-width="${thickness}"/>`);
         }
 
-        // Dots & Interval Texts (Inverted Y-axis)
+        // Dots & Interval Texts
         for (let s = 1; s <= FB.strings; s++) {
-            const y = FB.padTop + (FB.strings - s) * FB.stringGap;
-            // Open string (left of nut)
+            const y = FB.padTop + (s - 1) * FB.stringGap;
+            
+            // Open string
             parts.push(`<circle class="fb-dot" id="fb-dot-${s}-0" cx="${FB.padLeft - 14}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
             parts.push(`<text class="fb-text" id="fb-txt-${s}-0" x="${FB.padLeft - 14}" y="${y}"></text>`);
             
+            // Frets
             for (let f = 1; f <= FB.frets; f++) {
                 const x = FB.padLeft + FB.nutWidth + (f - 0.5) * FB.fretWidth;
                 parts.push(`<circle class="fb-dot" id="fb-dot-${s}-${f}" cx="${x}" cy="${y}" r="5.5" fill="transparent" stroke="transparent" stroke-width="1.5"/>`);
@@ -262,6 +259,8 @@
         }
     }
 
+    // AlphaTab counts strings Bottom-Up (1 = Low Pitch/Bottom). 
+    // We map it to Top-Down (1 = High Pitch/Top).
     function buildBarNotesMap(score) {
         const map = new Map();
         for (const track of score.tracks || []) {
@@ -274,9 +273,11 @@
                     for (const voice of bar.voices || []) {
                         for (const beat of voice.beats || []) {
                             for (const note of beat.notes || []) {
-                                const s = note.string, f = note.fret;
-                                if (s > 0 && s <= FB.strings && f >= 0 && f <= FB.frets) {
-                                    set.add(`${s}-${f}`);
+                                // INVERT ALPHATAB STRING INDEX
+                                const mappedString = FB.strings - note.string + 1;
+                                const f = note.fret;
+                                if (mappedString > 0 && mappedString <= FB.strings && f >= 0 && f <= FB.frets) {
+                                    set.add(`${mappedString}-${f}`);
                                 }
                             }
                         }
@@ -392,7 +393,10 @@
         // LAYER 3: ACTIVE NOTES (Action)
         if (activeNotes) {
             for (const note of activeNotes) {
-                const key = `${note.string}-${note.fret}`;
+                // INVERT ALPHATAB STRING INDEX HERE TOO
+                const mappedString = FB.strings - note.string + 1;
+                const key = `${mappedString}-${note.fret}`;
+                
                 const el = fbDotMap.get(key);
                 const txt = fbTxtMap.get(key);
                 if (el) {
@@ -746,7 +750,6 @@
             if (!b) return;
             const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
             
-            // Extract theory chord
             const newChord = extractChordFromBeat(b);
             if (newChord) activeChordName = newChord;
             
