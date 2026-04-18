@@ -488,6 +488,12 @@
   let iosHandlerWired = false;
   let iosPlaybackRate = 1;
   let iosMasterVolume = 1;
+  // Duration-fallback in ms. Set from the score's MIDI duration on
+  // scoreLoaded so AlphaTab's sync-point interpolation has a non-zero
+  // denominator even before the <audio> element fires loadedmetadata
+  // (duration is NaN until then, which would make the mapping math
+  // blow up and put the cursor in the wrong bar at the very start).
+  let iosDurationFallbackMs = 0;
 
   if (isIOS) {
     iosAudio = document.createElement('audio');
@@ -522,8 +528,11 @@
    */
   const iosExternalMediaHandler = {
     get backingTrackDuration() {
-      const d = iosAudio ? iosAudio.duration : 0;
-      return Number.isFinite(d) ? d * 1000 : 0;
+      const d = iosAudio ? iosAudio.duration : NaN;
+      if (Number.isFinite(d) && d > 0) return d * 1000;
+      // Metadata not loaded yet. Fall back to the score's own duration
+      // so AlphaTab's audio->score interpolation stays well-defined.
+      return iosDurationFallbackMs || 1;
     },
     get playbackRate() { return iosPlaybackRate; },
     set playbackRate(v) {
@@ -573,6 +582,10 @@
     // ~4 Hz, which is enough to make AlphaTab appear to hang before bar 1
     // until the first tick rolls in.
     const pushPosition = () => {
+      // readyState < HAVE_METADATA (1) → audio.duration is still NaN,
+      // so AlphaTab's mapping would divide by a bogus denominator.
+      // Wait until metadata has arrived before reporting positions.
+      if (!iosAudio || iosAudio.readyState < 1) return;
       const output = api.player && api.player.output;
       if (output && typeof output.updatePosition === 'function') {
         output.updatePosition((iosAudio.currentTime || 0) * 1000);
@@ -759,6 +772,7 @@
   }
 
   api.playerPositionChanged.on(e => {
+    if (isIOS && e.endTime > 0) iosDurationFallbackMs = e.endTime;
     timeDsp.textContent = `${fmt(e.currentTime)} / ${fmt(e.endTime)}`;
     const pct = e.endTime > 0 ? (e.currentTime / e.endTime) * 100 : 0;
     progFill.style.width = pct.toFixed(1) + '%';
