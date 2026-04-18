@@ -3,86 +3,73 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>AlphaTab 1.8.1 - Safari Pro</title>
+  <title>AlphaTab 1.8.1 - Pro Backing Track</title>
   <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
   <style>
     :root {
-      --accent: #e94560;
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --border: #334155;
-      --text: #e2e8f0;
-      --muted: #94a3b8;
+      --accent: #e94560; --bg: #0f172a; --surface: #1e293b;
+      --border: #334155; --text: #e2e8f0; --muted: #94a3b8;
     }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
-        height: 100dvh; overflow: hidden; background: var(--bg); 
+        height: 100dvh; margin: 0; overflow: hidden; background: var(--bg); 
         color: var(--text); font-family: -apple-system, system-ui, sans-serif; 
     }
-    #app { display: flex; flex-direction: column; height: 100%; visibility: hidden; }
+    #app { display: flex; flex-direction: column; height: 100%; display: none; }
     #header { 
         height: 60px; background: var(--surface); border-bottom: 1px solid var(--border); 
-        display: flex; align-items: center; padding: 0 15px; gap: 10px; flex-shrink: 0; 
+        display: flex; align-items: center; padding: 0 15px; gap: 10px;
     }
-    #main { flex: 1; display: flex; overflow: hidden; position: relative; }
-    #viewport { flex: 1; overflow-y: auto; background: #fff; position: relative; -webkit-overflow-scrolling: touch; }
-    #at-element { width: 100%; min-height: 500px; }
+    #main { flex: 1; overflow: hidden; position: relative; background: #fff; }
+    #viewport { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     #footer { 
         height: 75px; background: var(--surface); border-top: 1px solid var(--border); 
-        display: flex; align-items: center; padding: 0 15px; gap: 12px; flex-shrink: 0; 
+        display: flex; align-items: center; padding: 0 15px; gap: 12px;
     }
     .btn { 
         background: var(--accent); color: white; border: none; padding: 10px 18px; 
-        border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem;
+        border-radius: 8px; cursor: pointer; font-weight: 600;
     }
-    #prog-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 3px; position: relative; }
-    #prog-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent); width: 0%; border-radius: 3px; transition: width 0.1s linear; }
+    #prog-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 3px; position: relative; cursor: pointer;}
+    #prog-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent); width: 0%; border-radius: 3px; }
     .overlay { 
         position: absolute; inset: 0; display: flex; flex-direction: column; 
-        align-items: center; justify-content: center; z-index: 2000; 
-        background: var(--bg); text-align: center; padding: 30px; 
+        align-items: center; justify-content: center; z-index: 2000; background: var(--bg); 
     }
-    .hidden { display: none !important; }
     .spinner { 
-        width: 35px; height: 35px; border: 3px solid var(--border); 
+        width: 30px; height: 30px; border: 3px solid var(--border); 
         border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; 
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
-    <div style="font-size: 3.5rem; margin-bottom: 1rem;">🎸</div>
-    <h2 style="margin-bottom: 8px;">AlphaTab Player</h2>
-    <p id="startup-status" style="color: var(--muted); margin-bottom: 25px; font-size: 0.95rem;">
-        Safari requires a tap to load the audio engine.
-    </p>
-    <button class="btn" id="btn-start">Start Player</button>
+    <div style="font-size: 3rem; margin-bottom: 1rem;">🎸</div>
+    <h2 style="margin-bottom: 20px;">AlphaTab Pro</h2>
+    <button class="btn" id="btn-start">Enable Audio & Start</button>
 </div>
 
 <div id="app">
     <div id="header">
-        <div style="font-weight: 800; color: var(--accent); margin-right: 10px;">AlphaTab</div>
-        <div id="song-info" style="flex:1; font-size: 0.85rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            No file loaded
-        </div>
-        <button class="btn" style="padding: 7px 12px; font-size: 0.8rem;" onclick="document.getElementById('file-input').click()">Open</button>
+        <div style="font-weight: 800; color: var(--accent);">AlphaTab</div>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Load a GP file...</div>
+        <button class="btn" style="padding: 5px 10px;" onclick="document.getElementById('file-input').click()">Open</button>
         <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
     </div>
 
     <div id="main">
+        <div id="load-layer" class="overlay hidden" style="background: rgba(15,23,42,0.7);"><div class="spinner"></div></div>
         <div id="viewport">
-            <div id="load-layer" class="overlay hidden" style="background: rgba(15,23,42,0.6);"><div class="spinner"></div></div>
             <div id="at-element"></div>
         </div>
     </div>
 
     <div id="footer">
-        <button class="btn" id="btn-play" style="width: 45px; padding: 0;">▶</button>
-        <div id="time" style="font-family: monospace; font-size: 0.8rem; min-width: 85px;">0:00/0:00</div>
+        <button class="btn" id="btn-play" style="width: 50px;">▶</button>
+        <div id="time" style="font-family: monospace; font-size: 0.8rem;">0:00/0:00</div>
         <div id="prog-wrap"><div id="prog-fill"></div></div>
-        <input type="range" id="vol-control" value="80" style="width: 60px; accent-color: var(--accent);" />
     </div>
 </div>
 
@@ -90,71 +77,95 @@
     let api = null;
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
     
+    // UI Elements
     const startBtn = document.getElementById('btn-start');
-    const statusText = document.getElementById('startup-status');
+    const appEl = document.getElementById('app');
+    const startupEl = document.getElementById('startup-screen');
 
-    startBtn.addEventListener('click', function() {
-        // UI Feedback
-        startBtn.style.display = 'none';
-        statusText.innerText = "Downloading SoundFont (30MB)... Please wait.";
-        
-        // 1. Initialize API immediately on click
+    startBtn.addEventListener('click', async function() {
+        startBtn.disabled = true;
+        startBtn.innerText = "Initializing...";
+
         const element = document.getElementById('at-element');
+        
+        // 1. Initialize AlphaTab
         api = new alphaTab.AlphaTabApi(element, {
             core: { fontDirectory: CDN + 'font/' },
             player: {
                 enablePlayer: true,
-                soundFont: CDN + 'soundfont/sonivox.sf2'
+                enableBackingTracks: true, // MUST be true for GP8 MP3s
+                soundFont: CDN + 'soundfont/sonivox.sf2' 
             },
             display: { layoutMode: 0 }
         });
 
-        // 2. Handle Player Readiness
+        // 2. The Safari "Magic Trick"
+        // We must resume the context AND play/pause a dummy sound in this click
         api.playerReady.on(() => {
-            console.log("Player Ready");
-            
-            // Critical for Safari: Resume Context inside this same click thread
             const ctx = api.player?.synth?.audioContext;
-            if (ctx && ctx.state !== 'running') {
-                ctx.resume();
+            if (ctx) {
+                ctx.resume().then(() => {
+                    // Reveal UI
+                    startupEl.classList.add('hidden');
+                    appEl.style.display = 'flex';
+                    setupEvents();
+                });
             }
-
-            // Reveal the App
-            document.getElementById('startup-screen').classList.add('hidden');
-            document.getElementById('app').style.visibility = 'visible';
-            setupInteraction();
         });
     });
 
-    function setupInteraction() {
+    function setupEvents() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
 
+        // Handle File Loading
         fileInput.addEventListener('change', e => {
             const file = e.target.files[0];
             if (!file) return;
+            document.getElementById('load-layer').classList.remove('hidden');
+            
             const reader = new FileReader();
-            reader.onload = (args) => api.load(args.target.result);
+            reader.onload = (args) => {
+                api.load(args.target.result);
+            };
             reader.readAsArrayBuffer(file);
         });
 
+        // Handle Playback
         btnPlay.addEventListener('click', () => {
-            // Safari Re-priming
-            if (api.player?.synth?.audioContext?.state !== 'running') {
-                api.player.synth.audioContext.resume();
-            }
-            
-            // Embedded MP3 (GP8) Prime
+            // Safari Re-Blessing: If a backing track exists, we must interact with it
             if (api.player.backingTrackAudio) {
-                const bt = api.player.backingTrackAudio;
-                bt.play().then(() => { if(!api.player.state === 1) bt.pause(); }).catch(() => {});
+                // This ensures the HTML5 Audio element is allowed to play
+                if (api.player.state !== 1) {
+                    api.player.backingTrackAudio.play().then(() => {
+                        api.player.backingTrackAudio.pause();
+                        api.playPause();
+                    }).catch(err => {
+                        console.error("Backing track blocked", err);
+                        api.playPause();
+                    });
+                } else {
+                    api.playPause();
+                }
+            } else {
+                api.playPause();
             }
-
-            api.playPause();
         });
 
+        // Logic to force Backing Track if available
         api.scoreLoaded.on(score => {
-            document.getElementById('song-info').innerHTML = `<strong>${score.title || 'Untitled'}</strong>`;
+            document.getElementById('song-info').innerText = score.title || 'Loaded';
+            document.getElementById('load-layer').classList.add('hidden');
+            
+            // Check if GP8 Backing Track exists
+            setTimeout(() => {
+                if (api.player.backingTrackAudio) {
+                    console.log("Backing track detected. Muting MIDI for pure audio experience.");
+                    api.masterVolume = 1.0; 
+                    // Optional: You can mute the synth to hear ONLY the MP3
+                    // api.player.synth.isMuted = true; 
+                }
+            }, 500);
         });
 
         api.playerStateChanged.on(e => {
@@ -171,10 +182,6 @@
 
         api.renderStarted.on(() => document.getElementById('load-layer').classList.remove('hidden'));
         api.postRenderFinished.on(() => document.getElementById('load-layer').classList.add('hidden'));
-
-        document.getElementById('vol-control').addEventListener('input', e => {
-            api.masterVolume = e.target.value / 100;
-        });
     }
 </script>
 </body>
