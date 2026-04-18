@@ -3,41 +3,41 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>AlphaTab Safari - Final Fix</title>
+    <title>AlphaTab - Safari Backing Track</title>
     <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/alphaTab.min.js"></script>
     <style>
         :root { --accent: #e94560; --bg: #0f172a; --surface: #1e293b; --text: #e2e8f0; }
         body { height: 100dvh; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
         #app { display: none; flex-direction: column; height: 100%; }
         #header { height: 60px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 10px; border-bottom: 1px solid #334155; }
-        #main { flex: 1; overflow: hidden; position: relative; background: #fff; }
+        #main { flex: 1; overflow-y: auto; background: #fff; -webkit-overflow-scrolling: touch; }
         #footer { height: 75px; background: var(--surface); display: flex; align-items: center; padding: 0 15px; gap: 12px; }
         .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; background: var(--bg); text-align: center; }
-        #debug-log { font-size: 10px; color: #64748b; margin-top: 20px; font-family: monospace; max-width: 90%; white-space: pre-wrap; }
+        #debug-log { font-size: 10px; color: #94a3b8; margin-top: 20px; font-family: monospace; white-space: pre-wrap; width: 90%; text-align: left; }
     </style>
 </head>
 <body>
 
 <div id="startup-screen" class="overlay">
-    <div style="font-size: 3rem;">🛠️</div>
-    <h3 id="status-msg">Safari Engine Repair</h3>
-    <button class="btn" id="btn-start">ACTIVATE ENGINE</button>
-    <div id="debug-log">Ready to bypass local sandbox...</div>
+    <div style="font-size: 3rem; margin-bottom: 10px;">🎧</div>
+    <h3>Safari Backing Track Pro</h3>
+    <button class="btn" id="btn-start" style="margin-top: 15px;">BOOT PLAYER</button>
+    <div id="debug-log">Log initialized... waiting for user.</div>
 </div>
 
 <div id="app">
     <div id="header">
         <div style="font-weight: 800; color: var(--accent);">AlphaTab</div>
-        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; overflow: hidden; white-space: nowrap;">Load GP8...</div>
-        <button class="btn" style="padding: 5px 10px;" onclick="document.getElementById('file-input').click()">Open</button>
+        <div id="song-info" style="flex:1; font-size: 0.8rem; opacity: 0.7; white-space: nowrap; overflow: hidden;">Select GP8 file</div>
+        <button class="btn" style="padding: 6px 12px;" onclick="document.getElementById('file-input').click()">Open</button>
         <input type="file" id="file-input" style="display:none" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
     </div>
-    <div id="main"><div id="at-element"></div></div>
+    <div id="main"><div id="at-element" style="width: 100%; min-height: 500px;"></div></div>
     <div id="footer">
         <button class="btn" id="btn-play" style="width: 50px;">▶</button>
         <div id="time" style="font-size: 0.8rem; min-width: 80px;">0:00/0:00</div>
-        <div style="flex:1; height: 6px; background: #334155; border-radius: 3px; overflow: hidden;">
+        <div style="flex:1; height: 4px; background: #334155; border-radius: 2px; overflow: hidden;">
             <div id="prog-fill" style="height: 100%; background: var(--accent); width: 0%;"></div>
         </div>
     </div>
@@ -46,96 +46,88 @@
 <script>
     const log = (msg) => { document.getElementById('debug-log').innerText += "\n> " + msg; };
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
-
-    // A slightly larger but valid minimal SF2 (Base64)
-    const MINIMAL_SF2 = "U0Zia2xpc3RUUksyAAAAAHRocmUAAAAAc2ZiayAgIGxpc3Q0YmFua2h0ZWRyAAD/AHNhbXBsAAAAAABpbnN0AAAAAABwcmVzAAAAAABnZW5zAAAAAABtb2RzAAAAAABzYW1wAAAAAABpbnN0AAAAAABwcmVzAAAAAA==";
-
-    function getSf2BlobUrl() {
-        const binary = window.atob(MINIMAL_SF2);
-        const array = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-        const blob = new Blob([array], { type: 'application/x-font-sf2' });
-        return URL.createObjectURL(blob);
-    }
+    const MSCORE_SF2 = CDN + 'soundfont/mscore.sf2';
 
     document.getElementById('btn-start').addEventListener('click', async function() {
         this.style.display = 'none';
-        log("Waking Audio...");
+        log("1. Waking Safari Audio...");
 
         try {
+            // Wake AudioContext
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             const actx = new AudioContext();
             await actx.resume();
-            log("Audio: OK");
+            log("   AudioContext state: " + actx.state);
 
-            // 1. Create a local URL for the SoundFont
-            const localSf2Url = getSf2BlobUrl();
-            log("Memory URL created.");
-
-            // 2. Initialize AlphaTab
-            log("Starting AlphaTab...");
-            const element = document.getElementById('at-element');
-            
-            window.api = new alphaTab.AlphaTabApi(element, {
+            // Setup AlphaTab Settings
+            const settings = {
                 core: { 
                     fontDirectory: CDN + 'font/',
+                    engine: 'svg', // SVG is much harder for Safari to block than Canvas
                     useWorker: false 
                 },
+                display: { layoutMode: 'horizontal' }, // Faster initial load
                 player: {
                     enablePlayer: true,
                     enableBackingTracks: true,
-                    soundFont: localSf2Url 
+                    soundFont: MSCORE_SF2 // Using the small 1.6MB font
                 }
-            });
+            };
 
-            // 3. Monitor for explicit loading errors
-            window.api.error.on(err => log("API Error: " + err));
+            log("2. Launching Engine...");
+            const element = document.getElementById('at-element');
+            
+            // Safe Constructor call
+            window.api = new alphaTab.AlphaTabApi(element, settings);
 
+            log("3. Waiting for PlayerReady...");
+            
+            // Monitor Ready State
             window.api.playerReady.on(() => {
-                log("Success! Launching UI...");
+                log("   READY! Displaying App.");
                 document.getElementById('startup-screen').style.display = 'none';
                 document.getElementById('app').style.display = 'flex';
-                setupEvents();
+                setupUI();
             });
 
-            // If it hangs here, the CDN might be blocking the notation fonts (.woff)
-            setTimeout(() => {
-                if(document.getElementById('app').style.display !== 'flex') {
-                    log("Stuck? Check your internet connection.");
-                }
-            }, 4000);
+            // Monitor Errors
+            window.api.error.on(err => log("   ERROR: " + err));
 
         } catch (e) {
-            log("Catch: " + e.message);
+            log("   CRASH: " + e.message);
         }
     });
 
-    function setupEvents() {
+    function setupUI() {
         const fileInput = document.getElementById('file-input');
         const btnPlay = document.getElementById('btn-play');
 
         fileInput.addEventListener('change', e => {
             const file = e.target.files[0];
             if (!file) return;
+            log("Loading file...");
             const reader = new FileReader();
             reader.onload = (args) => window.api.load(args.target.result);
             reader.readAsArrayBuffer(file);
         });
 
         btnPlay.addEventListener('click', () => {
-            if (window.api.player?.synth?.audioContext?.state !== 'running') {
-                window.api.player.synth.audioContext.resume();
-            }
+            // Safety for Safari Backing Tracks
+            const synthCtx = window.api.player?.synth?.audioContext;
+            if (synthCtx && synthCtx.state !== 'running') synthCtx.resume();
+
             if (window.api.player.backingTrackAudio) {
+                // If GP8 MP3 exists, ensure it's allowed to play
                 window.api.player.backingTrackAudio.play().then(() => {
-                    if(window.api.player.state !== 1) window.api.player.backingTrackAudio.pause();
-                });
+                    if (window.api.player.state !== 1) window.api.player.backingTrackAudio.pause();
+                }).catch(e => log("Audio element blocked: " + e));
             }
             window.api.playPause();
         });
 
         window.api.scoreLoaded.on(score => {
             document.getElementById('song-info').innerText = score.title || 'Loaded';
+            log("Score Loaded: " + score.title);
         });
 
         window.api.playerStateChanged.on(e => {
