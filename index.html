@@ -78,8 +78,10 @@
         <button class="tgl on" id="tgl-practice" title="Settings" onclick="togglePanel('practice-row', this)">⚙</button>
         <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-wrapper', this)">🎸</button>
         <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
-        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()">📁</button>
-        <input type="file" id="file-input" style="display:none" />
+        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()" title="Load score (.gp, .gpx, .xml)">📁</button>
+        <button class="btn" id="btn-upload-mp3" style="padding: 6px 10px; font-size: 0.85rem; background:#334155;" onclick="document.getElementById('mp3-input').click()" title="Upload backing track (MP3/WAV/OGG)">🎵</button>
+        <input type="file" id="file-input" accept=".gp,.gp3,.gp4,.gp5,.gpx,.gp7,.musicxml,.xml,.cap,.capx" style="display:none" />
+        <input type="file" id="mp3-input" accept="audio/*,.mp3,.wav,.ogg,.m4a" style="display:none" />
     </div>
     <div id="main"><div id="at-element"></div></div>
     <div id="footer">
@@ -145,22 +147,24 @@ document.addEventListener("DOMContentLoaded", function() {
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
 
     let api, audioCtx;
-    let externalAudio;          
+    let externalAudio;
     let currentWavUrl = null;
     let positionTimer = 0;
-    let handlerWired = false;   
-    let externalMode = false;   
-    let syncOffsetMs = 0;       
-    let barNotesMap = null;     
-    let fbDotMap = new Map();   
-    let fbTxtMap = new Map();   
+    let externalHandlerAttached = false;
+    let externalMode = false;
+    let syncOffsetMs = 0;
+    let barNotesMap = null;
+    let fbDotMap = new Map();
+    let fbTxtMap = new Map();
     let lastPaintedBarIdx = -2;
     let lastActiveNotes = null;
+    let uploadedMp3Key = null;  // filename:size of manually uploaded audio (if any)
+    let scoreFileKey = null;    // filename:size of the loaded score
+    const GUITAR_PROGRAM_CLEAN = 27; // GM: Electric Guitar (clean)
 
     // Practice state
-    let scoreRef = null;        
-    let currentFileKey = null;  
-    let loopStartMs = -1;       
+    let scoreRef = null;
+    let loopStartMs = -1;
     let loopEndMs = -1;
     let isLoopOn = false;
     let isCountInOn = false;
@@ -572,13 +576,20 @@ document.addEventListener("DOMContentLoaded", function() {
         };
     }
 
-    function persistSync() {
-        if (!currentFileKey) return;
-        try { localStorage.setItem('at-sync:' + currentFileKey, String(syncOffsetMs)); } catch(e) {}
+    function syncStorageKey() {
+        if (!scoreFileKey) return null;
+        return 'at-sync:' + scoreFileKey + (uploadedMp3Key ? '|mp3=' + uploadedMp3Key : '');
     }
-    function restoreSync(fileKey) {
+    function persistSync() {
+        const key = syncStorageKey();
+        if (!key) return;
+        try { localStorage.setItem(key, String(syncOffsetMs)); } catch(e) {}
+    }
+    function restoreSync() {
+        const key = syncStorageKey();
+        if (!key) return false;
         try {
-            const v = localStorage.getItem('at-sync:' + fileKey);
+            const v = localStorage.getItem(key);
             if (v !== null) {
                 syncOffsetMs = parseInt(v, 10) || 0;
                 const sign = syncOffsetMs > 0 ? '+' : '';
@@ -588,6 +599,11 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         } catch(e) {}
         return false;
+    }
+    function resetSyncDisplay() {
+        syncOffsetMs = 0;
+        const disp = document.getElementById('sync-display');
+        if(disp) disp.textContent = '0 ms';
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -622,7 +638,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     enableCursor: true,
                     enableUserInteraction: true,
                     soundFont: CDN + 'soundfont/sonivox.sf2',
-                    playerMode: alphaTab.PlayerMode.EnabledExternalMedia,
+                    playerMode: alphaTab.PlayerMode.EnabledAutomatic,
                     scrollMode: alphaTab.ScrollMode.Continuous,
                     scrollElement: document.getElementById('main'),
                     scrollOffsetY: -30,
@@ -692,12 +708,78 @@ document.addEventListener("DOMContentLoaded", function() {
     // ─────────────────────────────────────────────────────────────────────
     // PHASE B — Score Load
     // ─────────────────────────────────────────────────────────────────────
+    function forceCleanElectricGuitar(score) {
+        if (!score?.tracks) return;
+        for (const track of score.tracks) {
+            if (track.playbackInfo) {
+                track.playbackInfo.program = GUITAR_PROGRAM_CLEAN;
+                track.playbackInfo.isMute = false;
+            }
+        }
+        try { api.loadMidiForScore(); } catch(e) { log("MIDI regen skipped: " + e.message); }
+    }
+
+    function setPlayerMode(modeName) {
+        try {
+            const modeVal = alphaTab.PlayerMode[modeName];
+            if (api.settings.player.playerMode === modeVal) return;
+            api.settings.player.playerMode = modeVal;
+            api.updateSettings();
+            log("PlayerMode → " + modeName);
+        } catch (e) { log("setPlayerMode(" + modeName + ") failed: " + e.message); }
+    }
+
+    async function loadExternalAudioBytes(bytes, label) {
+        try {
+            log("Decoding " + label + "...");
+            const copy = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+            const decoded = await audioCtx.decodeAudioData(copy);
+
+            log("Encoding WAV...");
+            const wavBlob = audioBufferToWavBlob(decoded);
+            if (currentWavUrl) URL.revokeObjectURL(currentWavUrl);
+            currentWavUrl = URL.createObjectURL(wavBlob);
+
+            externalAudio.src = currentWavUrl;
+            await new Promise((res, rej) => {
+                externalAudio.addEventListener('loadedmetadata', res, { once: true });
+                externalAudio.addEventListener('error', () => rej(new Error("audio load error")), { once: true });
+            });
+
+            setPlayerMode('EnabledExternalMedia');
+            ensureExternalHandler();
+
+            externalMode = true;
+            document.getElementById('mode-pill').classList.add('live');
+            document.getElementById('mode-pill').textContent = 'BACKING';
+            document.getElementById('btn-play').disabled = false;
+            document.getElementById('btn-play').textContent = "▶";
+            return true;
+        } catch (e) {
+            log("Backing track load failed: " + e.message);
+            return false;
+        }
+    }
+
+    function clearExternalAudio() {
+        externalMode = false;
+        uploadedMp3Key = null;
+        try { externalAudio.pause(); } catch(e) {}
+        try { externalAudio.removeAttribute('src'); externalAudio.load(); } catch(e) {}
+        if (currentWavUrl) { URL.revokeObjectURL(currentWavUrl); currentWavUrl = null; }
+        setPlayerMode('EnabledAutomatic');
+        document.getElementById('mode-pill').classList.remove('live');
+        document.getElementById('mode-pill').textContent = 'SYNTH';
+    }
+
     function wireApiEvents() {
         api.scoreLoaded.on(async (score) => {
             log("Score loaded: " + (score.title || "(untitled)"));
             scoreRef = score;
-            
-            activeChordName = ""; 
+
+            forceCleanElectricGuitar(score);
+
+            activeChordName = "";
             extCycle = 0;
             baseChord = "";
             const clabel = document.getElementById('fb-chord-label');
@@ -713,42 +795,15 @@ document.addEventListener("DOMContentLoaded", function() {
             const track = score.backingTrack?.rawAudioFile ? { data: score.backingTrack.rawAudioFile } : score.audioTracks?.length ? score.audioTracks[0] : null;
 
             if (!track || !track.data) {
-                externalMode = false;
-                document.getElementById('mode-pill').classList.remove('live');
-                document.getElementById('mode-pill').textContent = 'SYNTH';
+                clearExternalAudio();
                 return;
             }
 
-            try {
-                log("Decoding OGG...");
-                const oggCopy = track.data.buffer.slice(track.data.byteOffset, track.data.byteOffset + track.data.byteLength);
-                const decoded = await audioCtx.decodeAudioData(oggCopy);
-
-                log("Encoding WAV...");
-                const wavBlob = audioBufferToWavBlob(decoded);
-
-                if (currentWavUrl) URL.revokeObjectURL(currentWavUrl);
-                currentWavUrl = URL.createObjectURL(wavBlob);
-
-                externalAudio.src = currentWavUrl;
-                await new Promise((res, rej) => {
-                    externalAudio.addEventListener('loadedmetadata', res, { once: true });
-                    externalAudio.addEventListener('error', () => rej(new Error("audio load error")), { once: true });
-                });
-
-                externalMode = true;
-                document.getElementById('mode-pill').classList.add('live');
-                document.getElementById('mode-pill').textContent = 'BACKING';
-                document.getElementById('btn-play').disabled = false;
-                document.getElementById('btn-play').textContent = "▶";
-            } catch (e) { log("Backing track conversion failed: " + e.message); }
+            await loadExternalAudioBytes(track.data, "embedded audio");
         });
 
         api.playerReady.on(() => {
-            if (!handlerWired) {
-                attachExternalMediaHandler();
-                handlerWired = true;
-            }
+            ensureExternalHandler();
             document.getElementById('btn-play').disabled = false;
         });
 
@@ -796,9 +851,12 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // PHASE C — Bridge alphaTab ↔ <audio> 
+    // PHASE C — Bridge alphaTab ↔ <audio>
     // ─────────────────────────────────────────────────────────────────────
-    function attachExternalMediaHandler() {
+    function ensureExternalHandler() {
+        const output = api?.player?.output;
+        if (!output) return;
+
         const handler = {
             get backingTrackDuration() {
                 const d = externalAudio.duration;
@@ -816,21 +874,25 @@ document.addEventListener("DOMContentLoaded", function() {
             },
             pause() { externalAudio.pause(); }
         };
-
-        const output = api.player.output;
-        if (!output) return;
         output.handler = handler;
 
+        if (externalHandlerAttached) return;
+        externalHandlerAttached = true;
+
         const onTimeUpdate = () => {
+            if (!externalMode) return;
             if (isLoopOn && loopStartMs >= 0 && loopEndMs > loopStartMs) {
                 const curMs = externalAudio.currentTime * 1000;
                 if (curMs >= loopEndMs) {
                     externalAudio.currentTime = loopStartMs / 1000;
                 }
             }
-            output.updatePosition(
-                ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
-            );
+            const out = api?.player?.output;
+            if (out && out.updatePosition) {
+                out.updatePosition(
+                    ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
+                );
+            }
         };
         externalAudio.addEventListener('timeupdate', onTimeUpdate);
         externalAudio.addEventListener('seeked', onTimeUpdate);
@@ -841,7 +903,7 @@ document.addEventListener("DOMContentLoaded", function() {
         externalAudio.addEventListener('pause', () => clearInterval(positionTimer));
         externalAudio.addEventListener('ended', () => {
             clearInterval(positionTimer);
-            api.pause();
+            if (externalMode) api.pause();
         });
     }
 
@@ -856,7 +918,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // FILE OPEN
+    // FILE OPEN — Score (.gp etc.)
     // ─────────────────────────────────────────────────────────────────────
     const fileInput = document.getElementById('file-input');
     if (fileInput) {
@@ -869,15 +931,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 btnP.disabled = true;
                 btnP.textContent = "⏳";
             }
-            externalAudio.pause();
-            externalAudio.removeAttribute('src');
-            externalAudio.load();
 
-            currentFileKey = file.name + ':' + file.size;
-            syncOffsetMs = 0;
-            const disp = document.getElementById('sync-display');
-            if(disp) disp.textContent = '0 ms';
-            restoreSync(currentFileKey);
+            clearExternalAudio();
+            scoreFileKey = file.name + ':' + file.size;
+            resetSyncDisplay();
+            restoreSync();
 
             loopStartMs = -1; loopEndMs = -1; isLoopOn = false;
             const btnA = document.getElementById('btn-loop-a');
@@ -890,6 +948,36 @@ document.addEventListener("DOMContentLoaded", function() {
             const reader = new FileReader();
             reader.onload = (ev) => api.load(ev.target.result);
             reader.readAsArrayBuffer(file);
+            fileInput.value = '';
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FILE OPEN — Manual backing track (MP3/WAV/OGG)
+    // ─────────────────────────────────────────────────────────────────────
+    const mp3Input = document.getElementById('mp3-input');
+    if (mp3Input) {
+        mp3Input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!scoreFileKey) {
+                log("Load a score first, then attach a backing track.");
+                mp3Input.value = '';
+                return;
+            }
+            log("Reading backing track: " + file.name);
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                const bytes = new Uint8Array(ev.target.result);
+                const ok = await loadExternalAudioBytes(bytes, file.name);
+                if (ok) {
+                    uploadedMp3Key = file.name + ':' + file.size;
+                    resetSyncDisplay();
+                    restoreSync();
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            mp3Input.value = '';
         };
     }
 
