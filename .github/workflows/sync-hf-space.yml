@@ -1,0 +1,53 @@
+name: Mirror align-service → Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "align-service/**"
+      - ".github/workflows/sync-hf-space.yml"
+  workflow_dispatch: {}
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    env:
+      # Set these as repo secrets/vars before enabling the workflow:
+      #   secrets.HF_TOKEN       — Hugging Face write token
+      #   vars.HF_SPACE_OWNER    — e.g. "lmondelaersdev"
+      #   vars.HF_SPACE_NAME     — e.g. "alphatab-align"
+      HF_USER: ${{ vars.HF_SPACE_OWNER }}
+      HF_SPACE: ${{ vars.HF_SPACE_NAME }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard on missing secrets
+        run: |
+          if [ -z "$HF_USER" ] || [ -z "$HF_SPACE" ] || [ -z "$HF_TOKEN" ]; then
+            echo "::warning::HF_SPACE_OWNER / HF_SPACE_NAME / HF_TOKEN not set — skipping."
+            exit 0
+          fi
+
+      - name: Carve align-service into its own tree
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/hf-space
+          cp -R align-service/. /tmp/hf-space/
+          cd /tmp/hf-space
+          git init -q
+          git checkout -b main
+          git config user.email "ci@users.noreply.github.com"
+          git config user.name "align-service ci"
+          git add -A
+          git commit -q -m "Sync from ${{ github.repository }}@${{ github.sha }}"
+
+      - name: Force-push to Hugging Face Space
+        if: env.HF_USER != '' && env.HF_SPACE != '' && env.HF_TOKEN != ''
+        run: |
+          set -euo pipefail
+          cd /tmp/hf-space
+          git remote add space "https://${HF_USER}:${HF_TOKEN}@huggingface.co/spaces/${HF_USER}/${HF_SPACE}"
+          git push --force space main:main
