@@ -36,6 +36,12 @@
         #sync-display { text-align: center; font-family: monospace; color: var(--accent); font-weight: bold; min-width: 44px; display: inline-block; }
 
         #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
+        #mixer-row { background: var(--surface); border-top: 1px solid #334155; padding: 6px 10px; flex-shrink: 0; font-size: 0.7rem; display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; }
+        .mixer-track { display: flex; align-items: center; gap: 4px; background: #0f172a; border-radius: 4px; padding: 4px 6px; }
+        .mixer-track .name { color: #e2e8f0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
+        .mixer-track .m-btn, .mixer-track .s-btn { width: 22px; height: 22px; border: none; border-radius: 3px; background: #334155; color: #94a3b8; font-size: 0.7rem; font-weight: bold; cursor: pointer; padding: 0; }
+        .mixer-track .m-btn.on { background: #ef4444; color: white; }
+        .mixer-track .s-btn.on { background: #22c55e; color: white; }
         #practice-row .sep { color: #475569; font-weight: bold; margin: 0 2px; }
         #practice-row select { background: #334155; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 0.7rem; max-width: 110px; }
         #speed-display { font-family: monospace; min-width: 44px; text-align: center; color: var(--accent); font-weight: bold; display: inline-block; }
@@ -77,6 +83,7 @@
         <div id="song-info" style="flex:1; font-size: 0.75rem; opacity: 0.7; padding-left: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Load a .gp file…</div>
         <button class="tgl on" id="tgl-practice" title="Settings" onclick="togglePanel('practice-row', this)">⚙</button>
         <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-wrapper', this)">🎸</button>
+        <button class="tgl"    id="tgl-mixer" title="Mixer (mute/solo per track)" onclick="togglePanel('mixer-row', this)">🎚</button>
         <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
         <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()" title="Load score (.gp, .gpx, .xml)">📁</button>
         <button class="btn" id="btn-upload-mp3" style="padding: 6px 10px; font-size: 0.85rem; background:#334155;" onclick="document.getElementById('mp3-input').click()" title="Upload backing track (MP3/WAV/OGG)">🎵</button>
@@ -122,6 +129,8 @@
     <button class="sbtn" onclick="adjustSync(100)">+100</button>
     <button class="sbtn" onclick="adjustSync(1000)">+1s</button>
 </div>
+
+<div id="mixer-row" style="display:none;"></div>
 
 <div id="fretboard-wrapper">
     <div id="fb-resizer"></div>
@@ -576,6 +585,67 @@ document.addEventListener("DOMContentLoaded", function() {
         };
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // MIXER (per-track mute / solo on the synth)
+    // ─────────────────────────────────────────────────────────────────────
+    const trackMuted = new Set();
+    const trackSoloed = new Set();
+
+    function populateMixer(score) {
+        const row = document.getElementById('mixer-row');
+        if (!row) return;
+        trackMuted.clear();
+        trackSoloed.clear();
+        row.innerHTML = '';
+        (score.tracks || []).forEach((track, i) => {
+            const name = (track.name || ('Track ' + (i+1))).slice(0, 20);
+            const el = document.createElement('div');
+            el.className = 'mixer-track';
+            el.innerHTML = `
+                <span class="name" title="${name}">${name}</span>
+                <button class="m-btn" title="Mute">M</button>
+                <button class="s-btn" title="Solo">S</button>`;
+            const mBtn = el.querySelector('.m-btn');
+            const sBtn = el.querySelector('.s-btn');
+            mBtn.onclick = () => {
+                const muted = !trackMuted.has(i);
+                if (muted) trackMuted.add(i); else trackMuted.delete(i);
+                mBtn.classList.toggle('on', muted);
+                try { api.changeTrackMute([track], muted); } catch(e) { log("mute failed: " + e.message); }
+            };
+            sBtn.onclick = () => {
+                const soloed = !trackSoloed.has(i);
+                if (soloed) trackSoloed.add(i); else trackSoloed.delete(i);
+                sBtn.classList.toggle('on', soloed);
+                try { api.changeTrackSolo([track], soloed); } catch(e) { log("solo failed: " + e.message); }
+            };
+            row.appendChild(el);
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // WAKE LOCK (keep screen on during playback)
+    // ─────────────────────────────────────────────────────────────────────
+    let wakeLock = null;
+    async function acquireWakeLock() {
+        if (!('wakeLock' in navigator)) return;
+        try {
+            if (wakeLock) return;
+            wakeLock = await navigator.wakeLock.request('screen');
+            wakeLock.addEventListener('release', () => { wakeLock = null; });
+        } catch (e) { log("wakeLock request failed: " + e.message); }
+    }
+    function releaseWakeLock() {
+        if (!wakeLock) return;
+        try { wakeLock.release(); } catch(e) {}
+        wakeLock = null;
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && api?.playerState === 1) {
+            acquireWakeLock();
+        }
+    });
+
     function syncStorageKey() {
         if (!scoreFileKey) return null;
         return 'at-sync:' + scoreFileKey + (uploadedMp3Key ? '|mp3=' + uploadedMp3Key : '');
@@ -786,6 +856,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if(clabel) clabel.textContent = "";
 
             populateTrackSelect(score);
+            populateMixer(score);
             currentTrackIdx = -1;
 
             barNotesMap = buildBarNotesMap(score);
@@ -809,6 +880,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
         api.playerStateChanged.on((e) => {
             document.getElementById('btn-play').textContent = e.state === 1 ? '⏸' : '▶';
+            if (e.state === 1) acquireWakeLock();
+            else releaseWakeLock();
         });
 
         api.playerPositionChanged.on((e) => {
