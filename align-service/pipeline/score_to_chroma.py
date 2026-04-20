@@ -44,6 +44,11 @@ def score_to_chroma(
             chroma[(ev.pitch_class + 7) % 12, s:e] += fifth_weight
             chroma[(ev.pitch_class + 4) % 12, s:e] += third_weight
 
+    # Replace rest-only columns with a flat 1/12 distribution so cosine DTW
+    # doesn't see zero-norm vectors and emit NaN costs.
     norms = np.linalg.norm(chroma, axis=0, keepdims=True)
-    norms[norms == 0] = 1.0
+    zero_cols = (norms[0] < 1e-8)
+    if zero_cols.any():
+        chroma[:, zero_cols] = 1.0 / 12.0
+        norms = np.linalg.norm(chroma, axis=0, keepdims=True)
     return chroma / norms

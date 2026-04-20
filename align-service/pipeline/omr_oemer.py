@@ -32,7 +32,7 @@ def _run_oemer(png_path: str, work_dir: str) -> str:
             check=False,
             capture_output=True,
             text=True,
-            timeout=900,
+            timeout=480,
         )
     except FileNotFoundError as e:
         raise RuntimeError(
@@ -144,7 +144,9 @@ class OemerAdapter(OmrAdapter):
             page_xmls: list[str] = []
             for i in range(doc.page_count):
                 page = doc.load_page(i)
-                pix = page.get_pixmap(dpi=300, alpha=False)
+                # 200dpi ≈ 1654×2339 for A4 — still plenty for oemer, and
+                # ~2× faster than 300dpi on the free HF Space CPU.
+                pix = page.get_pixmap(dpi=200, alpha=False)
                 png_path = os.path.join(work_dir, f"page_{i + 1:03d}.png")
                 pix.save(png_path)
                 log.info(

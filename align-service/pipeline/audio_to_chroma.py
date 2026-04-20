@@ -35,8 +35,13 @@ def audio_to_chroma(
         y=y, sr=sr, hop_length=hop_length, n_chroma=12,
     ).astype(np.float32)
 
+    # Replace any silent / zero-norm columns with a flat 1/12 distribution
+    # so librosa's cosine DTW doesn't produce NaN cost entries.
     norms = np.linalg.norm(chroma, axis=0, keepdims=True)
-    norms[norms == 0] = 1.0
+    zero_cols = (norms[0] < 1e-8)
+    if zero_cols.any():
+        chroma[:, zero_cols] = 1.0 / 12.0
+        norms = np.linalg.norm(chroma, axis=0, keepdims=True)
     chroma = chroma / norms
 
     return AudioChroma(
