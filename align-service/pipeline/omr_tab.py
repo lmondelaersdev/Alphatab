@@ -61,12 +61,16 @@ STAFF_LINE_MIN_LEN_FRAC = 0.25
 
 # Two lines are considered part of the same staff if their spacing is
 # within ±this factor of the median spacing within the group.
-STAFF_SPACING_TOLERANCE = 0.40
+STAFF_SPACING_TOLERANCE = 0.50
 
 # Minimum / maximum vertical space between adjacent lines of a TAB stave.
 # Calibrated for 200dpi A4; broad enough for most sheet sizes.
-STAFF_LINE_MIN_SPACING_PX = 6
-STAFF_LINE_MAX_SPACING_PX = 40
+STAFF_LINE_MIN_SPACING_PX = 5
+STAFF_LINE_MAX_SPACING_PX = 45
+
+# Two detected lines closer than this are merged (morphology sometimes
+# splits one thick line into two CCs).
+STAFF_LINE_MERGE_PX = 3
 
 # When we crop a horizontal strip around a string line for OCR, this is
 # the half-height (pixels above + below the line).
@@ -187,31 +191,75 @@ def _cluster_line_ys(line_mask: np.ndarray) -> list[tuple[int, int, int]]:
     return lines
 
 
+def _merge_close_lines(
+    lines: list[tuple[int, int, int]],
+) -> list[tuple[int, int, int]]:
+    """Merge detections closer than ``STAFF_LINE_MERGE_PX`` — morphology
+    artefacts can split one printed line into two adjacent CCs."""
+    if not lines:
+        return lines
+    out: list[tuple[int, int, int]] = [lines[0]]
+    for y, xs, xe in lines[1:]:
+        py, pxs, pxe = out[-1]
+        if y - py <= STAFF_LINE_MERGE_PX:
+            out[-1] = ((py + y) // 2, min(pxs, xs), max(pxe, xe))
+        else:
+            out.append((y, xs, xe))
+    return out
+
+
 def _group_staves(lines: list[tuple[int, int, int]]) -> list[TabStave]:
-    """Cluster horizontal lines into groups of six (TAB staves)."""
+    """Greedily grow groups of horizontal lines with similar spacing.
+
+    Keeps groups of exactly 6 (TAB staves). 5-line notation staves and
+    stray rules are skipped. Uses the UNION of line x-ranges for the
+    stave's horizontal extent — a single short line at the end of a
+    system shouldn't tighten the whole OCR region.
+    """
+    lines = _merge_close_lines(lines)
     if len(lines) < 6:
+        log.info("  only %d horizontal lines after merge — need >=6", len(lines))
         return []
+
+    ys_all = [L[0] for L in lines]
+    gaps_preview = [ys_all[i + 1] - ys_all[i] for i in range(len(ys_all) - 1)]
+    log.info("  %d lines; gap stats min=%d max=%d median=%d",
+             len(lines), min(gaps_preview), max(gaps_preview),
+             int(np.median(gaps_preview)))
 
     staves: list[TabStave] = []
     i = 0
-    while i + 5 < len(lines):
-        window = lines[i:i + 6]
-        ys = [w[0] for w in window]
-        gaps = np.diff(ys)
-        if (
-            gaps.min() >= STAFF_LINE_MIN_SPACING_PX
-            and gaps.max() <= STAFF_LINE_MAX_SPACING_PX
-            and (gaps.max() - gaps.min()) <= STAFF_SPACING_TOLERANCE * float(np.median(gaps))
-        ):
-            # Keep the widest common x-range across the six.
-            x_start = max(w[1] for w in window)
-            x_end = min(w[2] for w in window)
-            if x_end - x_start > 100:  # meaningfully wide
+    n = len(lines)
+
+    while i <= n - 6:
+        group: list[tuple[int, int, int]] = [lines[i]]
+        j = i + 1
+        while j < n and len(group) < 6:
+            gap = lines[j][0] - group[-1][0]
+            if not (STAFF_LINE_MIN_SPACING_PX <= gap <= STAFF_LINE_MAX_SPACING_PX):
+                break
+            if len(group) >= 2:
+                prior = [group[k + 1][0] - group[k][0] for k in range(len(group) - 1)]
+                med = float(np.median(prior))
+                if abs(gap - med) > STAFF_SPACING_TOLERANCE * max(med, 1.0):
+                    break
+            group.append(lines[j])
+            j += 1
+
+        if len(group) == 6:
+            ys = [g[0] for g in group]
+            x_start = min(g[1] for g in group)
+            x_end = max(g[2] for g in group)
+            if x_end - x_start >= 80:
                 staves.append(TabStave(
                     line_ys=ys, x_start=x_start, x_end=x_end,
                 ))
-                i += 6
+                log.info("  ✓ TAB stave ys=%s x=%d-%d", ys, x_start, x_end)
+                i = j  # skip past consumed lines
                 continue
+            else:
+                log.info("  reject narrow 6-group ys=%s width=%d",
+                         ys, x_end - x_start)
         i += 1
     return staves
 
