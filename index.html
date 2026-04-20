@@ -841,7 +841,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const fd = new FormData();
             fd.append('score', pdfFile);
             fd.append('audio', mp3File);
-            fd.append('omr', 'oemer');
+            fd.append('omr', 'tabocr');
             const data = await submitAndPoll(ALIGN_API_URL + '/align-pdf-async', fd);
 
             if (!data.score_xml) { setStatus('No MusicXML returned by OMR.', 'err'); return; }
