@@ -5,26 +5,132 @@ takes a rendered page image and produces a MusicXML file. We convert each
 PDF page to PNG with PyMuPDF, run oemer per page, then concatenate the
 per-page MusicXML files into a single score via music21 so the alignment
 path covers the whole piece.
+
+Execution modes (picked automatically):
+
+* **in-process**: import ``oemer.ete.extract`` in the worker thread after
+  monkey-patching ``onnxruntime.InferenceSession`` to memoise sessions by
+  model path. This keeps the ~200MB of ONNX weights warm across pages —
+  on a 3-page PDF, pages 2+ avoid the multi-minute model-load tax.
+* **subprocess** (fallback): shell out to the ``oemer`` CLI. Used only if
+  the in-process path fails on first try. Slower because each invocation
+  re-imports Python and reloads all ONNX weights.
 """
 from __future__ import annotations
 
+import argparse
 import copy
 import logging
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 
 from .base import OmrAdapter
 from .registry import register_omr
 
 log = logging.getLogger("align.omr")
 
+# oemer is not re-entrant, and we only run one job at a time on the free
+# HF Space anyway. This lock serialises both in-process inference calls
+# and the one-shot ORT patch installation.
+_OEMER_LOCK = threading.Lock()
+_ORT_PATCHED = False
+_INPROCESS_OK: bool | None = None  # None=untested, True=works, False=disabled
 
-def _run_oemer(png_path: str, work_dir: str) -> str:
-    """Run oemer on one page PNG. Returns the path to the produced MusicXML."""
+
+def _patch_onnxruntime_cache() -> None:
+    """Cache ``onnxruntime.InferenceSession`` instances by (path, providers).
+
+    oemer's ``inference()`` constructs a fresh session on every call, which
+    means a 3-page PDF loads the same ~200MB of ONNX weights three times.
+    By memoising at the ORT layer we reuse sessions across pages without
+    touching oemer's internals. ORT sessions are documented thread-safe
+    for ``run()`` so sharing is fine.
+    """
+    global _ORT_PATCHED
+    if _ORT_PATCHED:
+        return
+    import onnxruntime as ort
+
+    orig_cls = ort.InferenceSession
+    cache: dict = {}
+    cache_lock = threading.Lock()
+
+    def cached_session(path_or_bytes, *args, **kwargs):
+        if not isinstance(path_or_bytes, str):
+            return orig_cls(path_or_bytes, *args, **kwargs)
+        key = (
+            os.path.realpath(path_or_bytes),
+            tuple(repr(p) for p in (kwargs.get("providers") or ())),
+        )
+        with cache_lock:
+            sess = cache.get(key)
+            if sess is None:
+                log.info("ORT: loading new session for %s", key[0])
+                sess = orig_cls(path_or_bytes, *args, **kwargs)
+                cache[key] = sess
+            else:
+                log.info("ORT: reusing cached session for %s", key[0])
+        return sess
+
+    ort.InferenceSession = cached_session  # type: ignore[assignment]
+    _ORT_PATCHED = True
+    log.info("Patched onnxruntime.InferenceSession for cross-page reuse")
+
+
+def _find_produced_musicxml(work_dir: str, png_path: str) -> str | None:
+    stem = os.path.splitext(os.path.basename(png_path))[0]
+    candidates = [
+        os.path.join(work_dir, stem + ".musicxml"),
+        os.path.join(work_dir, stem + ".xml"),
+    ]
+    for root, _, files in os.walk(work_dir):
+        for f in files:
+            if f.lower().endswith((".musicxml", ".xml")) and stem in f:
+                candidates.append(os.path.join(root, f))
+    return next((p for p in candidates if os.path.isfile(p)), None)
+
+
+def _run_oemer_inprocess(png_path: str, work_dir: str) -> str:
+    """Run oemer's end-to-end pipeline without forking a subprocess."""
+    _patch_onnxruntime_cache()
+    from oemer import ete
+
+    ns = argparse.Namespace(
+        img_path=png_path,
+        output_path=work_dir,
+        use_tf=False,
+        save_cache=False,
+        without_deskew=False,
+    )
+    # oemer may write intermediate artefacts to the current working
+    # directory, so pin cwd to work_dir for tidiness. Restore afterwards
+    # so we don't surprise unrelated code in the same process.
+    prev_cwd = os.getcwd()
+    try:
+        os.chdir(work_dir)
+        produced = ete.extract(ns)
+    finally:
+        try:
+            os.chdir(prev_cwd)
+        except OSError:
+            pass
+
+    if not (isinstance(produced, str) and os.path.isfile(produced)):
+        produced = _find_produced_musicxml(work_dir, png_path)
+    if not produced:
+        raise RuntimeError(
+            f"oemer completed in-process but produced no MusicXML for {png_path}"
+        )
+    return produced
+
+
+def _run_oemer_subprocess(png_path: str, work_dir: str) -> str:
+    """Fallback: invoke the oemer CLI. Reloads ONNX weights on every call."""
     cmd = ["oemer", "--output-path", work_dir, png_path]
-    log.info("Running: %s", " ".join(cmd))
+    log.info("Running (subprocess): %s", " ".join(cmd))
     try:
         proc = subprocess.run(
             cmd,
@@ -45,23 +151,41 @@ def _run_oemer(png_path: str, work_dir: str) -> str:
             "oemer failed (exit %d): %s" % (proc.returncode, proc.stderr[-800:])
         )
 
-    stem = os.path.splitext(os.path.basename(png_path))[0]
-    candidates = [
-        os.path.join(work_dir, stem + ".musicxml"),
-        os.path.join(work_dir, stem + ".xml"),
-    ]
-    for root, _, files in os.walk(work_dir):
-        for f in files:
-            if f.lower().endswith((".musicxml", ".xml")) and stem in f:
-                candidates.append(os.path.join(root, f))
-
-    produced = next((p for p in candidates if os.path.isfile(p)), None)
+    produced = _find_produced_musicxml(work_dir, png_path)
     if not produced:
         raise RuntimeError(
             "oemer completed but produced no MusicXML for %s. stdout tail: %s"
             % (png_path, proc.stdout[-400:])
         )
     return produced
+
+
+def _run_oemer(png_path: str, work_dir: str) -> str:
+    """Run oemer on one page PNG. Picks in-process or subprocess automatically."""
+    global _INPROCESS_OK
+
+    # Env override: OEMER_MODE=subprocess to force the CLI path.
+    if os.environ.get("OEMER_MODE", "").lower() == "subprocess":
+        return _run_oemer_subprocess(png_path, work_dir)
+
+    if _INPROCESS_OK is False:
+        return _run_oemer_subprocess(png_path, work_dir)
+
+    try:
+        with _OEMER_LOCK:
+            result = _run_oemer_inprocess(png_path, work_dir)
+        _INPROCESS_OK = True
+        return result
+    except Exception as e:
+        if _INPROCESS_OK is None:
+            log.warning(
+                "in-process oemer unavailable (%s); falling back to subprocess.",
+                e,
+            )
+            _INPROCESS_OK = False
+            return _run_oemer_subprocess(png_path, work_dir)
+        # In-process previously worked — this page genuinely failed.
+        raise
 
 
 def _concat_musicxml(xml_paths: list[str], out_path: str) -> str:

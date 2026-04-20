@@ -13,7 +13,7 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from pipeline import registry  # noqa: F401 — triggers adapter registration
+from pipeline import omr_cache, registry  # noqa: F401 — triggers adapter registration
 from pipeline.aligner_dtw import DtwCosineAligner  # noqa: F401
 from pipeline.audio_to_chroma import audio_to_chroma
 from pipeline.bar_map import bars_to_audio, downsample_path, warp_path_to_seconds
@@ -293,10 +293,21 @@ async def align_pdf(
 
     pdf_path = await _save_upload(score, ".pdf")
     audio_path = await _save_upload(audio, _suffix_of(audio, AUDIO_SUFFIXES))
-    musicxml_path = pdf_path + ".musicxml"
+    owned_musicxml = pdf_path + ".musicxml"  # temp copy — safe to unlink
+    to_unlink = [pdf_path, audio_path]
 
     try:
-        adapter_cls().pdf_to_musicxml(pdf_path, musicxml_path)
+        pdf_hash = omr_cache.hash_pdf(pdf_path)
+        cached = omr_cache.lookup(pdf_hash)
+        if cached:
+            log.info("OMR cache HIT for %s", pdf_hash[:12])
+            musicxml_path = cached  # cache file — do not unlink
+        else:
+            adapter_cls().pdf_to_musicxml(pdf_path, owned_musicxml)
+            omr_cache.store(pdf_hash, owned_musicxml)
+            musicxml_path = owned_musicxml
+            to_unlink.append(owned_musicxml)
+
         with open(musicxml_path, "r", encoding="utf-8", errors="replace") as f:
             score_xml_text = f.read()
         return _align_paths(
@@ -309,7 +320,7 @@ async def align_pdf(
             score_xml=score_xml_text,
         )
     finally:
-        for p in (pdf_path, audio_path, musicxml_path):
+        for p in to_unlink:
             try:
                 os.unlink(p)
             except OSError:
@@ -383,7 +394,8 @@ def _worker_align_pdf(
         log.info("[job %s] %s", job_id[:8], msg)
 
     adapter_cls = registry.pick_omr(omr_name)
-    musicxml_path = pdf_path + ".musicxml"
+    owned_musicxml = pdf_path + ".musicxml"  # temp — safe to unlink
+    to_unlink = [pdf_path, audio_path]
 
     try:
         _update_job(job_id, state="running", message="starting OMR")
@@ -391,12 +403,23 @@ def _worker_align_pdf(
         if adapter_cls is None:
             raise RuntimeError("No OMR adapter registered.")
 
-        progress("Running OMR on PDF (this can take several minutes per page)")
-        try:
-            adapter_cls().pdf_to_musicxml(pdf_path, musicxml_path, progress_cb=progress)
-        except TypeError:
-            # Adapter without progress_cb keyword — call the old signature.
-            adapter_cls().pdf_to_musicxml(pdf_path, musicxml_path)
+        progress("Hashing PDF for OMR cache lookup")
+        pdf_hash = omr_cache.hash_pdf(pdf_path)
+        cached = omr_cache.lookup(pdf_hash)
+
+        if cached:
+            progress(f"OMR cache HIT ({pdf_hash[:8]}) — skipping inference")
+            musicxml_path = cached  # persistent cache path — do NOT unlink
+        else:
+            progress("Running OMR on PDF (this can take several minutes per page)")
+            try:
+                adapter_cls().pdf_to_musicxml(pdf_path, owned_musicxml, progress_cb=progress)
+            except TypeError:
+                # Adapter without progress_cb keyword — call the old signature.
+                adapter_cls().pdf_to_musicxml(pdf_path, owned_musicxml)
+            omr_cache.store(pdf_hash, owned_musicxml)
+            musicxml_path = owned_musicxml
+            to_unlink.append(owned_musicxml)
 
         progress("Reading OMR MusicXML")
         with open(musicxml_path, "r", encoding="utf-8", errors="replace") as f:
@@ -429,7 +452,7 @@ def _worker_align_pdf(
             finished_at=time.time(),
         )
     finally:
-        for p in (pdf_path, audio_path, musicxml_path):
+        for p in to_unlink:
             try:
                 os.unlink(p)
             except OSError:
