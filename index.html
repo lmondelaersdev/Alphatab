@@ -69,7 +69,7 @@
         .pill.live { background: #14532d; color: #86efac; }
 
         /* Top-of-app status banner for alignment / async actions */
-        #align-banner { position: absolute; top: 56px; left: 12px; right: 12px; z-index: 50; background: #1e293b; color: #fbbf24; border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; box-shadow: 0 6px 14px rgba(0,0,0,0.4); display: none; }
+        #align-banner { position: fixed; top: 56px; left: 12px; right: 12px; z-index: 9999; background: #1e293b; color: #fbbf24; border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; box-shadow: 0 6px 18px rgba(0,0,0,0.5); display: none; cursor: pointer; }
         #align-banner.live { display: block; }
         #align-banner.ok   { color: #86efac; border-left-color: #22c55e; }
         #align-banner.err  { color: #fca5a5; border-left-color: #ef4444; }
@@ -97,7 +97,7 @@
         <input type="file" id="file-input" style="display:none" />
         <input type="file" id="mp3-input" style="display:none" />
     </div>
-    <div id="main"><div id="align-banner"></div><div id="at-element"></div></div>
+    <div id="main"><div id="at-element"></div></div>
     <div id="footer">
         <button class="btn" id="btn-play" disabled style="width: 50px; height: 40px; font-size: 1.3rem; padding: 0;">▶</button>
         <div style="flex:1;">
@@ -110,6 +110,7 @@
 </div>
 
 <audio id="external-audio" preload="auto" playsinline style="display:none"></audio>
+<div id="align-banner" title="Click to dismiss"></div>
 
 <div id="practice-row">
     <button class="sbtn" id="btn-loop-a" title="Set loop A" onclick="setLoopA()">A</button>
@@ -700,7 +701,7 @@ document.addEventListener("DOMContentLoaded", function() {
         clearTimeout(statusHideTimer);
         el.textContent = msg;
         el.className = 'live' + (kind ? ' ' + kind : '');
-        if (kind === 'ok' || kind === 'err') {
+        if (kind === 'ok') {
             statusHideTimer = setTimeout(() => { el.className = ''; }, 6000);
         }
         log(msg);
@@ -709,6 +710,14 @@ document.addEventListener("DOMContentLoaded", function() {
         const el = document.getElementById('align-banner');
         if (el) el.className = '';
     }
+    const _banner = document.getElementById('align-banner');
+    if (_banner) _banner.addEventListener('click', clearStatus);
+    window.addEventListener('error', (ev) => {
+        try { setStatus('JS error: ' + (ev.message || ev.error?.message || 'unknown'), 'err'); } catch(e) {}
+    });
+    window.addEventListener('unhandledrejection', (ev) => {
+        try { setStatus('Promise error: ' + (ev.reason?.message || ev.reason || 'unknown'), 'err'); } catch(e) {}
+    });
 
     let spaceWarmed = false;
     async function warmSpace() {
@@ -1180,7 +1189,9 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!file) return;
 
             // PDF → OMR alignment flow
-            if (/\.pdf$/i.test(file.name)) {
+            const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+            setStatus('Picked: ' + file.name + (isPdf ? ' — PDF detected.' : ''));
+            if (isPdf) {
                 pendingPdfFile = file;
                 document.getElementById('song-info').textContent = file.name + ' (PDF)';
                 warmSpace();  // wake the HF Space while user picks the MP3
