@@ -32,7 +32,7 @@ def _run_oemer(png_path: str, work_dir: str) -> str:
             check=False,
             capture_output=True,
             text=True,
-            timeout=480,
+            timeout=1200,
         )
     except FileNotFoundError as e:
         raise RuntimeError(
