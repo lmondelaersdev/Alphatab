@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt \
+ && chmod -R a+rwX "$(python -c 'import oemer, os; print(os.path.dirname(oemer.__file__))')"
 
 COPY . .
 
