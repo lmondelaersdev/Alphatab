@@ -8,3 +8,10 @@ soundfile==0.12.1
 music21==9.3.0
 PyGuitarPro==0.9.3
 pydantic==2.10.3
+
+# OMR: PDF → MusicXML
+oemer==0.1.7
+PyMuPDF==1.25.1
+opencv-python-headless==4.10.0.84
+onnxruntime==1.19.2
+Pillow==10.4.0

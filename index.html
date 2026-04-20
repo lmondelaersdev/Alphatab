@@ -85,8 +85,9 @@
         <button class="tgl on" id="tgl-fb" title="Fretboard" onclick="togglePanel('fretboard-wrapper', this)">🎸</button>
         <button class="tgl"    id="tgl-mixer" title="Mixer (mute/solo per track)" onclick="togglePanel('mixer-row', this)">🎚</button>
         <button class="tgl"    id="tgl-log" title="Debug log" onclick="togglePanel('debug-container', this)">📋</button>
-        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()" title="Load score (.gp, .gpx, .xml)">📁</button>
+        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()" title="Load score (.gp, .gpx, .xml, .pdf)">📁</button>
         <button class="btn" id="btn-upload-mp3" style="padding: 6px 10px; font-size: 0.85rem; background:#334155;" onclick="document.getElementById('mp3-input').click()" title="Upload backing track (MP3/WAV/OGG)">🎵</button>
+        <button class="tgl" id="btn-align" title="Align current score with current MP3 (DTW)" onclick="alignCurrentScoreWithMp3()">🎼</button>
         <input type="file" id="file-input" style="display:none" />
         <input type="file" id="mp3-input" style="display:none" />
     </div>
@@ -154,6 +155,7 @@ document.addEventListener("DOMContentLoaded", function() {
         l.scrollTop = l.scrollHeight;
     };
     const CDN = 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.1/dist/';
+    const ALIGN_API_URL = 'https://lmondelaers-guitartranscribe.hf.space';
 
     let api, audioCtx;
     let externalAudio;
@@ -169,6 +171,12 @@ document.addEventListener("DOMContentLoaded", function() {
     let lastActiveNotes = null;
     let uploadedMp3Key = null;  // filename:size of manually uploaded audio (if any)
     let scoreFileKey = null;    // filename:size of the loaded score
+    let lastScoreFile = null;   // File object of last loaded score (for /align)
+    let lastAudioFile = null;   // File object of last loaded audio (for /align)
+    let pendingPdfFile = null;  // PDF waiting for an MP3 to align against
+    let alignmentActive = false;
+    let warpByAudio = [];       // [{a, s}] sorted by audio_sec
+    let warpByScore = [];       // [{a, s}] sorted by score_sec
     const GUITAR_PROGRAM_CLEAN = 27; // GM: Electric Guitar (clean)
 
     // Practice state
@@ -677,6 +685,141 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // ALIGNMENT (score ↔ audio warp path from /align backend)
+    // ─────────────────────────────────────────────────────────────────────
+    function clearAlignment() {
+        alignmentActive = false;
+        warpByAudio = [];
+        warpByScore = [];
+        const b = document.getElementById('btn-align');
+        if (b) b.classList.remove('on');
+    }
+
+    function applyWarpPath(path) {
+        if (!Array.isArray(path) || path.length < 2) {
+            clearAlignment();
+            return;
+        }
+        // Backend emits [score_sec, audio_sec] pairs.
+        warpByAudio = path.map(([s, a]) => ({ a, s })).sort((x, y) => x.a - y.a);
+        warpByScore = [...warpByAudio].sort((x, y) => x.s - y.s);
+        alignmentActive = true;
+        const b = document.getElementById('btn-align');
+        if (b) b.classList.add('on');
+        log(`Alignment active — ${warpByAudio.length} warp points`);
+    }
+
+    function bsearchLE(arr, key, field) {
+        let lo = 0, hi = arr.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (arr[mid][field] <= key) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo - 1;
+    }
+
+    function audioSecToScoreMs(audioSec) {
+        if (!alignmentActive || warpByAudio.length < 2) {
+            return audioSec * 1000 + syncOffsetMs;
+        }
+        let i = bsearchLE(warpByAudio, audioSec, 'a');
+        if (i < 0) return warpByAudio[0].s * 1000 + syncOffsetMs;
+        if (i >= warpByAudio.length - 1) return warpByAudio[warpByAudio.length - 1].s * 1000 + syncOffsetMs;
+        const lo = warpByAudio[i], hi = warpByAudio[i + 1];
+        const dt = Math.max(1e-6, hi.a - lo.a);
+        const t = (audioSec - lo.a) / dt;
+        return (lo.s + t * (hi.s - lo.s)) * 1000 + syncOffsetMs;
+    }
+
+    function scoreMsToAudioSec(scoreMs) {
+        if (!alignmentActive || warpByScore.length < 2) {
+            return Math.max(0, (scoreMs - syncOffsetMs) / 1000);
+        }
+        const scoreSec = (scoreMs - syncOffsetMs) / 1000;
+        let i = bsearchLE(warpByScore, scoreSec, 's');
+        if (i < 0) return warpByScore[0].a;
+        if (i >= warpByScore.length - 1) return warpByScore[warpByScore.length - 1].a;
+        const lo = warpByScore[i], hi = warpByScore[i + 1];
+        const dt = Math.max(1e-6, hi.s - lo.s);
+        const t = (scoreSec - lo.s) / dt;
+        return lo.a + t * (hi.a - lo.a);
+    }
+
+    function waitForScoreLoaded() {
+        return new Promise(res => {
+            const h = () => { try { api.scoreLoaded.off(h); } catch(e){} res(); };
+            api.scoreLoaded.on(h);
+        });
+    }
+
+    async function alignPdfWithMp3(pdfFile, mp3File) {
+        const fd = new FormData();
+        fd.append('score', pdfFile);
+        fd.append('audio', mp3File);
+        fd.append('omr', 'oemer');
+        log('Uploading PDF+MP3 to /align-pdf (OMR+DTW, 60-180s)...');
+        const btn = document.getElementById('btn-align');
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        try {
+            const resp = await fetch(ALIGN_API_URL + '/align-pdf', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const t = await resp.text();
+                log('align-pdf failed: ' + resp.status + ' ' + t.slice(0, 240));
+                return;
+            }
+            const data = await resp.json();
+            log(`Received: ${data.bars.length} bars, ${data.warp_path.length} warp pts, xml=${data.score_xml ? data.score_xml.length : 0}B`);
+            if (!data.score_xml) { log('No MusicXML returned — cannot display score.'); return; }
+
+            const loaded = waitForScoreLoaded();
+            scoreFileKey = pdfFile.name + ':' + pdfFile.size;
+            lastScoreFile = pdfFile;
+            resetSyncDisplay();
+            api.load(data.score_xml);
+            await loaded;
+
+            uploadedMp3Key = mp3File.name + ':' + mp3File.size;
+            lastAudioFile = mp3File;
+            const bytes = new Uint8Array(await mp3File.arrayBuffer());
+            await loadExternalAudioBytes(bytes, mp3File.name);
+
+            applyWarpPath(data.warp_path);
+        } catch (e) {
+            log('align-pdf error: ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🎼'; }
+        }
+    }
+
+    async function alignCurrentScoreWithMp3() {
+        if (!lastScoreFile) { log('ALIGN: load a score first.'); return; }
+        if (!lastAudioFile) { log('ALIGN: upload an MP3 first.'); return; }
+        const btn = document.getElementById('btn-align');
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        try {
+            const fd = new FormData();
+            fd.append('score', lastScoreFile);
+            fd.append('audio', lastAudioFile);
+            log('Uploading to /align (DTW)...');
+            const resp = await fetch(ALIGN_API_URL + '/align', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const t = await resp.text();
+                log('align failed: ' + resp.status + ' ' + t.slice(0, 240));
+                return;
+            }
+            const data = await resp.json();
+            log(`Received: ${data.bars.length} bars, ${data.warp_path.length} warp pts`);
+            applyWarpPath(data.warp_path);
+        } catch (e) {
+            log('align error: ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🎼'; }
+        }
+    }
+    window.alignCurrentScoreWithMp3 = alignCurrentScoreWithMp3;
+
+    // ─────────────────────────────────────────────────────────────────────
     // PHASE A — BOOT 
     // ─────────────────────────────────────────────────────────────────────
     const btnInit = document.getElementById('btn-initialize');
@@ -917,7 +1060,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const tMs = b.absolutePlaybackStart;
             if (typeof tMs === 'number' && externalAudio && Number.isFinite(externalAudio.duration)) {
-                const targetSec = Math.max(0, Math.min(externalAudio.duration, (tMs - syncOffsetMs) / 1000));
+                const raw = alignmentActive ? scoreMsToAudioSec(tMs) : (tMs - syncOffsetMs) / 1000;
+                const targetSec = Math.max(0, Math.min(externalAudio.duration, raw));
                 externalAudio.currentTime = targetSec;
             }
         });
@@ -962,9 +1106,11 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             const out = api?.player?.output;
             if (out && out.updatePosition) {
-                out.updatePosition(
-                    ((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs
-                );
+                const audioSec = externalAudio.currentTime;
+                const scoreMs = alignmentActive
+                    ? audioSecToScoreMs(audioSec)
+                    : ((audioSec / externalAudio.playbackRate) * 1000) + syncOffsetMs;
+                out.updatePosition(scoreMs);
             }
         };
         externalAudio.addEventListener('timeupdate', onTimeUpdate);
@@ -998,6 +1144,21 @@ document.addEventListener("DOMContentLoaded", function() {
         fileInput.onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
+
+            // PDF → OMR alignment flow
+            if (/\.pdf$/i.test(file.name)) {
+                pendingPdfFile = file;
+                document.getElementById('song-info').textContent = file.name + ' (PDF)';
+                if (lastAudioFile) {
+                    alignPdfWithMp3(file, lastAudioFile);
+                    pendingPdfFile = null;
+                } else {
+                    log('PDF loaded — now upload MP3/WAV to align.');
+                }
+                fileInput.value = '';
+                return;
+            }
+
             document.getElementById('song-info').textContent = file.name;
             const btnP = document.getElementById('btn-play');
             if(btnP) {
@@ -1005,8 +1166,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 btnP.textContent = "⏳";
             }
 
+            clearAlignment();
             clearExternalAudio();
             scoreFileKey = file.name + ':' + file.size;
+            lastScoreFile = file;
             resetSyncDisplay();
             restoreSync();
 
@@ -1033,6 +1196,17 @@ document.addEventListener("DOMContentLoaded", function() {
         mp3Input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            lastAudioFile = file;
+
+            // If a PDF was uploaded first, pair them now and run OMR+align.
+            if (pendingPdfFile) {
+                const pdf = pendingPdfFile;
+                pendingPdfFile = null;
+                await alignPdfWithMp3(pdf, file);
+                mp3Input.value = '';
+                return;
+            }
+
             if (!scoreFileKey) {
                 log("Load a score first, then attach a backing track.");
                 mp3Input.value = '';
@@ -1045,6 +1219,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const ok = await loadExternalAudioBytes(bytes, file.name);
                 if (ok) {
                     uploadedMp3Key = file.name + ':' + file.size;
+                    clearAlignment();  // new audio invalidates any old warp path
                     resetSyncDisplay();
                     restoreSync();
                 }

@@ -56,6 +56,7 @@ class AlignResponse(BaseModel):
     meta: Meta
     bars: list[BarPoint]
     warp_path: list[tuple[float, float]]
+    score_xml: Optional[str] = None  # populated by /align-pdf (OMR output)
 
 
 SCORE_SUFFIXES = (
@@ -149,6 +150,7 @@ def _align_paths(
     hop_length: int,
     sample_rate: int,
     aligner: str,
+    score_xml: Optional[str] = None,
 ) -> AlignResponse:
     aligner_cls = registry.pick_aligner(aligner)
     if aligner_cls is None:
@@ -196,6 +198,7 @@ def _align_paths(
         meta=meta,
         bars=[BarPoint(**b) for b in bars],
         warp_path=path_small,
+        score_xml=score_xml,
     )
 
 
@@ -226,6 +229,8 @@ async def align_pdf(
 
     try:
         adapter_cls().pdf_to_musicxml(pdf_path, musicxml_path)
+        with open(musicxml_path, "r", encoding="utf-8", errors="replace") as f:
+            score_xml_text = f.read()
         return _align_paths(
             score_path=musicxml_path,
             audio_path=audio_path,
@@ -233,6 +238,7 @@ async def align_pdf(
             hop_length=hop_length,
             sample_rate=sample_rate,
             aligner=aligner,
+            score_xml=score_xml_text,
         )
     finally:
         for p in (pdf_path, audio_path, musicxml_path):
