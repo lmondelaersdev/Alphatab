@@ -81,4 +81,10 @@ class OmrAdapter(ABC):
     name: str = "unnamed"
 
     @abstractmethod
-    def pdf_to_musicxml(self, pdf_path: str, out_path: str) -> str: ...
+    def pdf_to_musicxml(self, pdf_path: str, out_path: str, progress_cb=None) -> str:
+        """Convert a PDF to MusicXML at ``out_path``.
+
+        ``progress_cb`` is an optional callable taking one string argument
+        ("OMR page 2/3: inference…"). Async endpoints use it to stream
+        status back to the client while the CPU-heavy work runs.
+        """

@@ -795,55 +795,76 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    async function alignPdfWithMp3(pdfFile, mp3File) {
-        const fd = new FormData();
-        fd.append('score', pdfFile);
-        fd.append('audio', mp3File);
-        fd.append('omr', 'oemer');
-        const btn = document.getElementById('btn-align');
-        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    // Submit multipart form to submitUrl, then poll /align-jobs/{id} every
+    // 3s until state is done/error. Returns the AlignResponse on success.
+    async function submitAndPoll(submitUrl, fd) {
+        const submit = await fetch(submitUrl, { method: 'POST', body: fd });
+        if (!submit.ok) {
+            const t = await submit.text();
+            throw new Error(`submit ${submit.status}: ${t.slice(0, 200)}`);
+        }
+        const { job_id } = await submit.json();
+        if (!job_id) throw new Error('Backend did not return a job_id.');
 
-        const startedAt = Date.now();
-        let tick = 0;
-        const tickTimer = setInterval(() => {
-            tick = Math.floor((Date.now() - startedAt) / 1000);
-            setStatus(`Running OMR + DTW on HF Space… ${tick}s (first run downloads ~200MB weights, 2–4 min)`);
-        }, 1000);
-
-        try {
-            const resp = await fetch(ALIGN_API_URL + '/align-pdf', { method: 'POST', body: fd });
-            clearInterval(tickTimer);
+        while (true) {
+            await new Promise(r => setTimeout(r, 3000));
+            let resp;
+            try {
+                resp = await fetch(`${ALIGN_API_URL}/align-jobs/${job_id}`);
+            } catch (e) {
+                setStatus(`Poll failed (retrying): ${e.message}`, 'err');
+                continue;
+            }
             if (!resp.ok) {
                 const t = await resp.text();
-                setStatus(`align-pdf failed after ${tick}s: ${resp.status} — ${t.slice(0, 240)}`, 'err');
-                return;
+                throw new Error(`poll ${resp.status}: ${t.slice(0, 200)}`);
             }
-            const data = await resp.json();
-            setStatus(`OMR ok (${tick}s): ${data.bars.length} bars, ${data.warp_path.length} warp pts, ${data.score_xml ? data.score_xml.length : 0}B xml. Loading score…`);
+            const j = await resp.json();
+            const secs = Math.round(j.elapsed_sec);
+            if (j.state === 'done') {
+                setStatus(`Job done (${secs}s): ${j.message}`);
+                return j.result;
+            }
+            if (j.state === 'error') {
+                throw new Error(`${j.error || 'unknown'} (after ${secs}s)`);
+            }
+            setStatus(`[${secs}s] ${j.message}`);
+        }
+    }
+
+    async function alignPdfWithMp3(pdfFile, mp3File) {
+        const btn = document.getElementById('btn-align');
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        setStatus('Submitting PDF+MP3 to HF Space for OMR+DTW…');
+
+        try {
+            const fd = new FormData();
+            fd.append('score', pdfFile);
+            fd.append('audio', mp3File);
+            fd.append('omr', 'oemer');
+            const data = await submitAndPoll(ALIGN_API_URL + '/align-pdf-async', fd);
+
             if (!data.score_xml) { setStatus('No MusicXML returned by OMR.', 'err'); return; }
+            setStatus(`OMR+DTW ok: ${data.bars.length} bars, ${data.warp_path.length} warp pts, ${data.score_xml.length}B xml. Loading score…`);
 
             const loaded = waitForScoreLoaded();
             scoreFileKey = pdfFile.name + ':' + pdfFile.size;
             lastScoreFile = pdfFile;
             resetSyncDisplay();
-            // alphaTab.load expects URL | ArrayBuffer | Uint8Array; a raw XML
-            // string would be treated as a URL and fail silently. Encode to bytes.
             const xmlBytes = new TextEncoder().encode(data.score_xml);
             api.load(xmlBytes.buffer);
             await loaded;
 
             uploadedMp3Key = mp3File.name + ':' + mp3File.size;
             lastAudioFile = mp3File;
-            const bytes = new Uint8Array(await mp3File.arrayBuffer());
-            await loadExternalAudioBytes(bytes, mp3File.name);
+            const audioBytes = new Uint8Array(await mp3File.arrayBuffer());
+            await loadExternalAudioBytes(audioBytes, mp3File.name);
 
             applyWarpPath(data.warp_path);
             setStatus(`Aligned ${pdfFile.name} ↔ ${mp3File.name} (${data.warp_path.length} pts).`, 'ok');
         } catch (e) {
-            clearInterval(tickTimer);
-            setStatus(`align-pdf network error after ${tick}s: ${e.message}`, 'err');
+            setStatus('align-pdf error: ' + e.message, 'err');
         } finally {
-            clearInterval(tickTimer);
             if (btn) { btn.disabled = false; btn.textContent = '🎼'; }
         }
     }
@@ -853,18 +874,12 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!lastAudioFile) { setStatus('Upload an MP3 first.', 'err'); return; }
         const btn = document.getElementById('btn-align');
         if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        setStatus('Submitting score+MP3 to HF Space for DTW…');
         try {
             const fd = new FormData();
             fd.append('score', lastScoreFile);
             fd.append('audio', lastAudioFile);
-            setStatus('Running DTW alignment on the HF Space…');
-            const resp = await fetch(ALIGN_API_URL + '/align', { method: 'POST', body: fd });
-            if (!resp.ok) {
-                const t = await resp.text();
-                setStatus('align failed: ' + resp.status + ' — ' + t.slice(0, 200), 'err');
-                return;
-            }
-            const data = await resp.json();
+            const data = await submitAndPoll(ALIGN_API_URL + '/align-async', fd);
             applyWarpPath(data.warp_path);
             setStatus(`Aligned ${data.bars.length} bars (${data.warp_path.length} warp pts).`, 'ok');
         } catch (e) {

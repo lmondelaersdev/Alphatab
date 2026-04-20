@@ -125,8 +125,13 @@ def _concat_musicxml(xml_paths: list[str], out_path: str) -> str:
 class OemerAdapter(OmrAdapter):
     """Adapter around the ``oemer`` CLI, with multi-page PDF support."""
 
-    def pdf_to_musicxml(self, pdf_path: str, out_path: str) -> str:
+    def pdf_to_musicxml(self, pdf_path: str, out_path: str, progress_cb=None) -> str:
         import fitz  # PyMuPDF
+
+        def _report(msg: str) -> None:
+            if progress_cb:
+                try: progress_cb(msg)
+                except Exception: pass
 
         with tempfile.TemporaryDirectory() as work_dir:
             doc = fitz.open(pdf_path)
@@ -134,6 +139,7 @@ class OemerAdapter(OmrAdapter):
                 raise RuntimeError("PDF contains no pages")
 
             log.info("PDF has %d page(s); running oemer on each.", doc.page_count)
+            _report(f"OMR: {doc.page_count} page(s) to process")
 
             page_xmls: list[str] = []
             for i in range(doc.page_count):
@@ -145,12 +151,15 @@ class OemerAdapter(OmrAdapter):
                     "Rendered page %d/%d → %s (%dx%d)",
                     i + 1, doc.page_count, png_path, pix.width, pix.height,
                 )
+                _report(f"OMR page {i + 1}/{doc.page_count}: rendering → inference")
                 try:
                     xml_path = _run_oemer(png_path, work_dir)
                 except Exception as e:
                     # One bad page shouldn't kill the whole run — skip it.
                     log.error("oemer failed on page %d: %s", i + 1, e)
+                    _report(f"OMR page {i + 1}/{doc.page_count}: FAILED ({e})")
                     continue
+                _report(f"OMR page {i + 1}/{doc.page_count}: done")
                 page_xmls.append(xml_path)
             doc.close()
 
@@ -162,5 +171,6 @@ class OemerAdapter(OmrAdapter):
                 log.info("Single usable page → %s", out_path)
                 return out_path
 
+            _report(f"Stitching {len(page_xmls)} page MusicXML files")
             _concat_musicxml(page_xmls, out_path)
             return out_path
