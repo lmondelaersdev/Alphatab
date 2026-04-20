@@ -17,6 +17,14 @@ from . import score_loader   # noqa: F401 — registers MusicXML/MIDI/GP loaders
 from . import omr            # noqa: F401 — registration point for OMR adapters
 
 # Heavier optional adapters: only register if their runtime deps import.
+# Order matters — pick_omr(None) returns the first registered adapter, so
+# put the TAB-aware one first since guitar scores are the primary target.
+try:
+    from . import omr_tab  # noqa: F401 — registers "tabocr"
+except Exception as _e:  # pragma: no cover — logged, not fatal
+    import logging
+    logging.getLogger("align").warning("tabocr adapter not loaded: %s", _e)
+
 try:
     from . import omr_oemer  # noqa: F401 — registers "oemer"
 except Exception as _e:  # pragma: no cover — logged, not fatal

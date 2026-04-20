@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libgl1 \
         libglib2.0-0 \
+        tesseract-ocr \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --home-dir /home/app app
 
