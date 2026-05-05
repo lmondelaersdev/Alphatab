@@ -453,18 +453,22 @@ document.addEventListener("DOMContentLoaded", function() {
     // window contains this beat's start time.
     function collectSoundingNotes(currentBeat) {
         const t = currentBeat.absolutePlaybackStart || 0;
-        const out = [];
-        const seen = new Set();
+        const FRESH_TOL_MS = 5;  // beats whose start ≈ t are "fresh hits"
+        const entries = new Map();  // (string,fret) → { note, fresh }
 
-        const tryAdd = (note) => {
+        const tryAdd = (note, beat, fresh) => {
             const k = `${note.string}-${note.fret}`;
-            if (seen.has(k)) return;
-            seen.add(k);
-            out.push(note);
+            const strikeMs = beat.absolutePlaybackStart || 0;
+            const prior = entries.get(k);
+            if (!prior) entries.set(k, { note, fresh, strikeMs });
+            else if (fresh && !prior.fresh) entries.set(k, { note, fresh, strikeMs });
+            else if (!fresh && !prior.fresh && strikeMs > prior.strikeMs) {
+                // Two sustaining sources for the same cell: keep the newer
+                // strike so the fade reflects the most recent attack.
+                entries.set(k, { note, fresh, strikeMs });
+            }
         };
 
-        // Effective end time of a note, accounting for ties (chase the
-        // tieDestination chain) and let-ring (ring out to end of voice).
         const noteEndMs = (note, beat) => {
             const beatEnd = (beat.absolutePlaybackStart || 0) + (beat.playbackDuration || 0);
             if (note.isTieOrigin) {
@@ -477,11 +481,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 return end;
             }
             if (note.isLetRing) {
-                // Ring until the next strike on the same string within
-                // this voice, or a hard cap after the beat ends.
-                // 1500 ms is roughly a half-bar at moderate tempos; long
-                // enough to bridge a sustained bass under a few melody
-                // notes, short enough to clear before it crowds the neck.
                 const RING_MAX_MS = 1500;
                 const beats = beat.voice?.beats || [];
                 let foundSelf = false;
@@ -503,9 +502,16 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (bs > t) break;
                 const be = bs + (beat.playbackDuration || 0);
                 const playsNow = bs <= t && t < be;
+                const beatStartedNow = bs >= t - FRESH_TOL_MS;
                 for (const note of (beat.notes || [])) {
-                    if (playsNow) { tryAdd(note); continue; }
-                    if (noteEndMs(note, beat) > t) tryAdd(note);
+                    if (playsNow) {
+                        // Fresh hit if this beat just started AND the note
+                        // is the strike (not a tie continuation).
+                        const fresh = beatStartedNow && !note.isTieDestination;
+                        tryAdd(note, beat, fresh);
+                        continue;
+                    }
+                    if (noteEndMs(note, beat) > t) tryAdd(note, beat, false);
                 }
             }
         };
@@ -529,6 +535,13 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
 
+        const out = [];
+        for (const { note, fresh, strikeMs } of entries.values()) {
+            note.__fbFresh = fresh;
+            note.__fbStrikeMs = strikeMs;
+            note.__fbCurrentMs = t;
+            out.push(note);
+        }
         return out;
     }
 
@@ -628,6 +641,7 @@ document.addEventListener("DOMContentLoaded", function() {
             el.setAttribute('fill', 'transparent');
             el.setAttribute('stroke', 'transparent');
             el.setAttribute('r', '5.5');
+            el.style.opacity = '';
         });
         fbTxtMap.forEach(el => {
             el.style.opacity = '0';
@@ -678,6 +692,8 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
 
+        const FADE_DUR_MS = 1500;
+        const MIN_OPACITY = 0.32;
         if (activeNotes) {
             for (const note of activeNotes) {
                 const mappedString = FB.strings - note.string + 1;
@@ -685,10 +701,35 @@ document.addEventListener("DOMContentLoaded", function() {
                 const el = fbDotMap.get(key);
                 const txt = fbTxtMap.get(key);
                 if (el) {
+                    const fresh = !!note.__fbFresh;
+                    const elapsed = Math.max(0, (note.__fbCurrentMs || 0) - (note.__fbStrikeMs || 0));
+                    const startOp = fresh
+                        ? 1
+                        : Math.max(MIN_OPACITY, 1 - (elapsed / FADE_DUR_MS) * (1 - MIN_OPACITY));
+
                     el.setAttribute('fill', '#e94560');
                     el.setAttribute('stroke', '#fff');
                     el.setAttribute('stroke-width', '1.5');
                     el.setAttribute('r', '7.5');
+                    el.style.opacity = String(startOp);
+
+                    if (fresh) {
+                        // Snap-on attack: brief size pulse, then slow fade.
+                        el.animate([
+                            { r: 11, opacity: 1, offset: 0 },
+                            { r: 7.5, opacity: 1, offset: 0.08 },
+                            { r: 7.5, opacity: MIN_OPACITY, offset: 1 }
+                        ], { duration: FADE_DUR_MS, easing: 'ease-out', fill: 'forwards' });
+                    } else {
+                        // Continue the fade from where it should be now.
+                        const remaining = FADE_DUR_MS - elapsed;
+                        if (remaining > 50) {
+                            el.animate([
+                                { opacity: startOp },
+                                { opacity: MIN_OPACITY }
+                            ], { duration: remaining, easing: 'linear', fill: 'forwards' });
+                        }
+                    }
                     applyEffectAnims(el, note, prevActiveNotes);
                 }
                 if (txt) txt.style.opacity = '0';
