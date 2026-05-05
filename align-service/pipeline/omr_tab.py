@@ -65,12 +65,12 @@ STAFF_SPACING_TOLERANCE = 0.50
 
 # Minimum / maximum vertical space between adjacent lines of a TAB stave.
 # Calibrated for 200dpi A4; broad enough for most sheet sizes.
-STAFF_LINE_MIN_SPACING_PX = 5
+STAFF_LINE_MIN_SPACING_PX = 8
 STAFF_LINE_MAX_SPACING_PX = 45
 
-# Two detected lines closer than this are merged (morphology sometimes
-# splits one thick line into two CCs).
-STAFF_LINE_MERGE_PX = 3
+# Two detected lines closer than this are merged — morphology can split
+# a single printed line into two CCs when a note sits astride it.
+STAFF_LINE_MERGE_PX = 8
 
 # When we crop a horizontal strip around a string line for OCR, this is
 # the half-height (pixels above + below the line).
