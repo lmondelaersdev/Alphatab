@@ -409,6 +409,39 @@ document.addEventListener("DOMContentLoaded", function() {
             ], { duration: 110, iterations: Infinity, direction: 'alternate' }));
         }
 
+        // Hammer-on / Pull-off destination: by the time we reach this
+        // beat the origin has already played and disappeared. Animate
+        // the destination dot moving from the origin fret to its actual
+        // cell, AND temporarily light up the origin cell with a faded
+        // dot so the user can see where the slur came from. Origin info
+        // can come either from an explicit hammerPullOrigin reference
+        // on the destination note, or from the previous beat's notes.
+        let hpOriginFret = null;
+        if (note.hammerPullOrigin && typeof note.hammerPullOrigin.fret === 'number') {
+            hpOriginFret = note.hammerPullOrigin.fret;
+        } else {
+            const src = prevNotes?.find(p =>
+                p.string === note.string && (p.isHammerPullOrigin || p.hammerPullDestination)
+            );
+            if (src) hpOriginFret = src.fret;
+        }
+        if (hpOriginFret !== null && hpOriginFret !== note.fret) {
+            const dx = (hpOriginFret - note.fret) * fw;
+            anims.push(dot.animate([
+                { transform: `translate(${dx}px, 0px)` },
+                { transform: 'translate(0px, 0px)' }
+            ], { duration: 160, fill: 'forwards' }));
+
+            const mappedStr = FB.strings - note.string + 1;
+            const originDot = fbDotMap.get(`${mappedStr}-${hpOriginFret}`);
+            if (originDot && originDot !== dot) {
+                originDot.setAttribute('fill', 'rgba(233, 69, 96, 0.40)');
+                originDot.setAttribute('stroke', 'rgba(255, 255, 255, 0.5)');
+                originDot.setAttribute('stroke-width', '1');
+                originDot.setAttribute('r', '6.5');
+            }
+        }
+
         return anims;
     }
 
