@@ -318,43 +318,23 @@ document.addEventListener("DOMContentLoaded", function() {
         return parts.join('');
     }
 
-    // Read alphaTab note ornaments and produce labels to render adjacent
-    // to the active fret dot. alphaTab BendPoint values are quarter-tones
-    // (4 = whole step, 2 = half step). Other enums are non-zero on use.
+    // alphaTab note ornaments → motion / badges on the active fret dot.
+    //
+    // For pitch-changing effects (bend, slide, vibrato) we animate the
+    // dot itself so the motion mirrors what's happening to the note. For
+    // discrete attributes (hammer-on / pull-off / harmonic / palm mute)
+    // we keep a small badge label since there's no natural motion.
+    //
+    // alphaTab BendPoint values are quarter-tones (4 = whole step).
+    // SlideOutType: 1=Shift, 2=Legato, 3=OutUp, 4=OutDown, 5=PickUp, 6=PickDown.
+    // SlideInType: 1=IntoFromBelow, 2=IntoFromAbove.
+    // VibratoType: any non-zero = vibrato.
     function ornamentBadges(note) {
         const out = [];
-        if (note.bendType && note.bendType !== 0) {
-            let semis = 0;
-            if (note.bendPoints?.length) {
-                semis = note.bendPoints.reduce((m, p) => Math.max(m, p?.value || 0), 0) / 4;
-            }
-            let label = '↑';
-            if (semis > 0) {
-                if (Math.abs(semis - 0.5) < 0.05) label = '↑½';
-                else if (Math.abs(semis - 1) < 0.05) label = '↑1';
-                else if (Math.abs(semis - 1.5) < 0.05) label = '↑1½';
-                else if (Math.abs(semis - 2) < 0.05) label = '↑2';
-                else label = '↑' + semis.toFixed(semis < 1 ? 2 : 1);
-            }
-            out.push({ text: label, fill: '#ffd166' });
-        }
-        if (note.slideOutType && note.slideOutType !== 0) {
-            const t = note.slideOutType;
-            const down = (t === 4 || t === 6);  // SlideOutDown variants
-            out.push({ text: down ? '↘' : '↗', fill: '#9ad9ff' });
-        }
-        if (note.slideInType && note.slideInType !== 0) {
-            const t = note.slideInType;
-            const fromBelow = (t === 1);
-            out.push({ text: fromBelow ? '↗' : '↘', fill: '#9ad9ff' });
-        }
         if (note.isHammerPullOrigin || note.hammerPullOrigin) {
             const dst = note.hammerPullDestination;
             const sym = (dst && typeof dst.fret === 'number' && dst.fret > note.fret) ? 'H' : 'P';
             out.push({ text: sym, fill: '#9be3a8' });
-        }
-        if (note.vibrato && note.vibrato !== 0) {
-            out.push({ text: '〜', fill: '#c9a9ff' });
         }
         if (note.harmonicType && note.harmonicType !== 0) {
             out.push({ text: '◆', fill: '#ffe066' });
@@ -364,6 +344,75 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         return out;
     }
+
+    // Animate a fret dot to mirror bend / slide / vibrato. Returns an
+    // array of Animation objects so callers can cancel them on the next
+    // repaint (or we'd leak motion across beats).
+    function applyEffectAnims(dot, note, prevNotes) {
+        const anims = [];
+        const fw = FB.fretWidth;
+
+        // Bend: peak amount in semitones determines a partial-fret rightward shift.
+        if (note.bendType && note.bendType !== 0) {
+            const peakSemis = (note.bendPoints?.length)
+                ? note.bendPoints.reduce((m, p) => Math.max(m, (p?.value || 0)), 0) / 4
+                : 1;
+            const dx = peakSemis * fw * 0.45;
+            if (dx > 0.5) {
+                anims.push(dot.animate([
+                    { transform: 'translate(0px, 0px)' },
+                    { transform: `translate(${dx}px, 0px)`, offset: 0.45 },
+                    { transform: `translate(${dx}px, 0px)` }
+                ], { duration: 380, fill: 'forwards' }));
+            }
+        }
+
+        // Slide-INTO. Either the note declares slideInType, or the
+        // previous beat's same-string note slid out toward us.
+        const slideIn = note.slideInType || note.slideType || 0;
+        let slideFromDx = null;
+        if (slideIn === 1) slideFromDx = -fw * 1.5;       // from below
+        else if (slideIn === 2) slideFromDx =  fw * 1.5;  // from above
+
+        const prevSrc = prevNotes?.find(p =>
+            p.string === note.string
+            && (p.slideOutType === 1 || p.slideOutType === 2)
+        );
+        if (prevSrc && typeof prevSrc.fret === 'number') {
+            slideFromDx = (prevSrc.fret - note.fret) * fw;
+        }
+        if (slideFromDx !== null && Math.abs(slideFromDx) > 0.5) {
+            anims.push(dot.animate([
+                { transform: `translate(${slideFromDx}px, 0px)` },
+                { transform: 'translate(0px, 0px)' }
+            ], { duration: 200, fill: 'forwards' }));
+        }
+
+        // Slide-OUT without a target: drift in the slide direction during
+        // the latter half of the beat so the visual decays naturally.
+        const slideOut = note.slideOutType || 0;
+        let outDx = 0;
+        if (slideOut === 3 || slideOut === 5) outDx =  fw * 1.5;   // out up
+        else if (slideOut === 4 || slideOut === 6) outDx = -fw * 1.5;  // out down
+        if (outDx !== 0) {
+            anims.push(dot.animate([
+                { transform: 'translate(0px, 0px)', offset: 0.4 },
+                { transform: `translate(${outDx}px, 0px)`, offset: 1 }
+            ], { duration: 360, fill: 'forwards' }));
+        }
+
+        // Vibrato: small continuous oscillation while the beat is held.
+        if (note.vibrato && note.vibrato !== 0) {
+            anims.push(dot.animate([
+                { transform: 'translate(-1.5px, 0px)' },
+                { transform: 'translate(1.5px, 0px)' }
+            ], { duration: 110, iterations: Infinity, direction: 'alternate' }));
+        }
+
+        return anims;
+    }
+
+    let prevActiveNotes = null;
 
     function initFretboard() {
         const fbDiv = document.getElementById('fretboard');
@@ -455,6 +504,7 @@ document.addEventListener("DOMContentLoaded", function() {
         lastActiveNotes = activeNotes;
 
         fbDotMap.forEach(el => {
+            el.getAnimations().forEach(a => a.cancel());
             el.setAttribute('fill', 'transparent');
             el.setAttribute('stroke', 'transparent');
             el.setAttribute('r', '5.5');
@@ -519,6 +569,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     el.setAttribute('stroke', '#fff');
                     el.setAttribute('stroke-width', '1.5');
                     el.setAttribute('r', '7.5');
+                    applyEffectAnims(el, note, prevActiveNotes);
                 }
                 if (txt) txt.style.opacity = '0';
 
@@ -544,6 +595,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
         }
+        prevActiveNotes = activeNotes;
 
         const blabel = document.getElementById('fb-bar-label');
         if (blabel && barIdx >= 0) blabel.textContent = 'BAR ' + (barIdx + 1);
