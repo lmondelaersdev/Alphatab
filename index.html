@@ -445,6 +445,57 @@ document.addEventListener("DOMContentLoaded", function() {
         return anims;
     }
 
+    // alphaTab fires playedBeatChanged for one voice at a time. When a
+    // multi-voice arrangement has e.g. a held bass on voice 2 + melody
+    // on voice 1, only the active voice's notes appear in `b.notes`,
+    // so the other voice's simultaneously sounding notes get hidden.
+    // Collect notes from every voice (and every track) whose beat
+    // window contains this beat's start time.
+    function collectSoundingNotes(currentBeat) {
+        const notes = [...(currentBeat.notes || [])];
+        const t = currentBeat.absolutePlaybackStart || 0;
+
+        const bar = currentBeat.voice?.bar;
+        if (bar?.voices) {
+            for (const voice of bar.voices) {
+                if (voice === currentBeat.voice) continue;
+                for (const beat of (voice.beats || [])) {
+                    const bs = beat.absolutePlaybackStart || 0;
+                    const be = bs + (beat.playbackDuration || 0);
+                    if (bs <= t && t < be) {
+                        if (beat.notes?.length) notes.push(...beat.notes);
+                        break;
+                    }
+                }
+            }
+        }
+
+        const score = bar?.staff?.track?.score;
+        if (score?.tracks?.length > 1) {
+            const mIdx = bar?.masterBar?.index;
+            for (const tk of score.tracks) {
+                if (tk === bar.staff.track) continue;
+                for (const stf of (tk.staves || [])) {
+                    for (const obar of (stf.bars || [])) {
+                        if (obar.masterBar?.index !== mIdx) continue;
+                        for (const voice of (obar.voices || [])) {
+                            for (const beat of (voice.beats || [])) {
+                                const bs = beat.absolutePlaybackStart || 0;
+                                const be = bs + (beat.playbackDuration || 0);
+                                if (bs <= t && t < be) {
+                                    if (beat.notes?.length) notes.push(...beat.notes);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return notes;
+    }
+
     let prevActiveNotes = null;
 
     function initFretboard() {
@@ -1268,22 +1319,22 @@ document.addEventListener("DOMContentLoaded", function() {
             const b = beat?.beat || beat;
             if (!b) return;
             const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
-            
+
             const newChord = extractChordFromBeat(b);
             if (newChord) activeChordName = newChord;
-            
-            repaintFretboard(barIdx, b.notes || []);
+
+            repaintFretboard(barIdx, collectSoundingNotes(b));
         });
 
         api.beatMouseDown.on((beat) => {
             const b = beat?.beat || beat;
             if (!b) return;
             const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
-            
+
             const newChord = extractChordFromBeat(b);
             if (newChord) activeChordName = newChord;
-            
-            repaintFretboard(barIdx, b.notes || []);
+
+            repaintFretboard(barIdx, collectSoundingNotes(b));
 
             const tMs = b.absolutePlaybackStart;
             if (typeof tMs === 'number' && externalAudio && Number.isFinite(externalAudio.duration)) {
