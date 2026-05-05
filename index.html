@@ -476,9 +476,23 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
                 return end;
             }
-            if (note.isLetRing && beat.voice?.beats?.length) {
-                const last = beat.voice.beats[beat.voice.beats.length - 1];
-                return (last.absolutePlaybackStart || 0) + (last.playbackDuration || 0);
+            if (note.isLetRing) {
+                // Ring until the next strike on the same string within
+                // this voice, or a hard cap after the beat ends.
+                // 1500 ms is roughly a half-bar at moderate tempos; long
+                // enough to bridge a sustained bass under a few melody
+                // notes, short enough to clear before it crowds the neck.
+                const RING_MAX_MS = 1500;
+                const beats = beat.voice?.beats || [];
+                let foundSelf = false;
+                for (const ob of beats) {
+                    if (ob === beat) { foundSelf = true; continue; }
+                    if (!foundSelf) continue;
+                    if ((ob.notes || []).some(n => n.string === note.string)) {
+                        return ob.absolutePlaybackStart || 0;
+                    }
+                }
+                return beatEnd + RING_MAX_MS;
             }
             return beatEnd;
         };
