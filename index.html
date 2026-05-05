@@ -452,22 +452,53 @@ document.addEventListener("DOMContentLoaded", function() {
     // Collect notes from every voice (and every track) whose beat
     // window contains this beat's start time.
     function collectSoundingNotes(currentBeat) {
-        const notes = [...(currentBeat.notes || [])];
         const t = currentBeat.absolutePlaybackStart || 0;
+        const out = [];
+        const seen = new Set();
+
+        const tryAdd = (note) => {
+            const k = `${note.string}-${note.fret}`;
+            if (seen.has(k)) return;
+            seen.add(k);
+            out.push(note);
+        };
+
+        // Effective end time of a note, accounting for ties (chase the
+        // tieDestination chain) and let-ring (ring out to end of voice).
+        const noteEndMs = (note, beat) => {
+            const beatEnd = (beat.absolutePlaybackStart || 0) + (beat.playbackDuration || 0);
+            if (note.isTieOrigin) {
+                let cur = note.tieDestination, end = beatEnd;
+                while (cur) {
+                    const cb = cur.beat;
+                    if (cb) end = (cb.absolutePlaybackStart || 0) + (cb.playbackDuration || 0);
+                    cur = cur.tieDestination;
+                }
+                return end;
+            }
+            if (note.isLetRing && beat.voice?.beats?.length) {
+                const last = beat.voice.beats[beat.voice.beats.length - 1];
+                return (last.absolutePlaybackStart || 0) + (last.playbackDuration || 0);
+            }
+            return beatEnd;
+        };
+
+        const processVoice = (voice) => {
+            for (const beat of (voice.beats || [])) {
+                const bs = beat.absolutePlaybackStart || 0;
+                if (bs > t) break;
+                const be = bs + (beat.playbackDuration || 0);
+                const playsNow = bs <= t && t < be;
+                for (const note of (beat.notes || [])) {
+                    if (playsNow) { tryAdd(note); continue; }
+                    if (noteEndMs(note, beat) > t) tryAdd(note);
+                }
+            }
+        };
 
         const bar = currentBeat.voice?.bar;
         if (bar?.voices) {
-            for (const voice of bar.voices) {
-                if (voice === currentBeat.voice) continue;
-                for (const beat of (voice.beats || [])) {
-                    const bs = beat.absolutePlaybackStart || 0;
-                    const be = bs + (beat.playbackDuration || 0);
-                    if (bs <= t && t < be) {
-                        if (beat.notes?.length) notes.push(...beat.notes);
-                        break;
-                    }
-                }
-            }
+            for (const voice of bar.voices) processVoice(voice);
         }
 
         const score = bar?.staff?.track?.score;
@@ -478,22 +509,13 @@ document.addEventListener("DOMContentLoaded", function() {
                 for (const stf of (tk.staves || [])) {
                     for (const obar of (stf.bars || [])) {
                         if (obar.masterBar?.index !== mIdx) continue;
-                        for (const voice of (obar.voices || [])) {
-                            for (const beat of (voice.beats || [])) {
-                                const bs = beat.absolutePlaybackStart || 0;
-                                const be = bs + (beat.playbackDuration || 0);
-                                if (bs <= t && t < be) {
-                                    if (beat.notes?.length) notes.push(...beat.notes);
-                                    break;
-                                }
-                            }
-                        }
+                        for (const voice of (obar.voices || [])) processVoice(voice);
                     }
                 }
             }
         }
 
-        return notes;
+        return out;
     }
 
     let prevActiveNotes = null;
