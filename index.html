@@ -96,6 +96,7 @@
         <button class="tgl" id="btn-align" title="Align current score with current MP3 (DTW)" onclick="alignCurrentScoreWithMp3()">🎼</button>
         <button class="tgl on" id="btn-surf" title="Tremolo + spring reverb (surf chain)" onclick="toggleSurf()">🌊</button>
         <button class="btn" style="padding: 6px 10px; font-size: 0.85rem; background:#475569;" onclick="document.getElementById('sf2-input').click()" title="Load a real-guitar SoundFont (.sf2 / .sf3) — e.g. a Stratocaster sampleset from soundfonts4u">🎚</button>
+        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem; background:#475569;" onclick="resetSoundFont()" title="Reset to the default Sonivox SoundFont">↺</button>
         <input type="file" id="file-input" style="display:none" />
         <input type="file" id="sf2-input" accept=".sf2,.sf3" style="display:none" />
         <input type="file" id="mp3-input" style="display:none" />
@@ -1486,6 +1487,9 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('btn-play').disabled = false;
         });
 
+        try { api.soundFontLoaded?.on?.(() => log('[SF2] soundFontLoaded fired — synth bank updated')); } catch (_) {}
+        try { api.soundFontLoadFailed?.on?.((e) => log('[SF2] soundFontLoadFailed: ' + (e?.error?.message || e?.message || e))); } catch (_) {}
+
         api.playerStateChanged.on((e) => {
             document.getElementById('btn-play').textContent = e.state === 1 ? '⏸' : '▶';
             if (e.state === 1) acquireWakeLock();
@@ -1701,6 +1705,29 @@ document.addEventListener("DOMContentLoaded", function() {
         };
     }
 
+    async function resetSoundFont() {
+        if (!api) {
+            setStatus('Tap ▶ once to boot alphaTab first.', 'err');
+            return;
+        }
+        setStatus('Resetting to default Sonivox SoundFont…');
+        try {
+            const resp = await fetch(CDN + 'soundfont/sonivox.sf2');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const buf = await resp.arrayBuffer();
+            const fn = (typeof api.loadSoundFont === 'function') ? api.loadSoundFont
+                     : (typeof api.loadSoundFontFromBytes === 'function') ? api.loadSoundFontFromBytes
+                     : api.player?.loadSoundFont?.bind(api.player);
+            if (!fn) throw new Error('loadSoundFont API not available');
+            fn.call(api, new Uint8Array(buf), false);  // replace, not append
+            try { api.stop?.(); } catch (_) {}
+            setStatus('Default SoundFont restored.');
+        } catch (e) {
+            setStatus('Reset failed: ' + e.message, 'err');
+        }
+    }
+    window.resetSoundFont = resetSoundFont;
+
     // SF2 / SF3 upload — replace alphaTab's default Sonivox SoundFont with
     // a sampled-instrument one (e.g. a Stratocaster sampleset). The
     // method name varies across alphaTab releases, so we try the known
@@ -1732,7 +1759,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (result === false) {
                     setStatus('Player not ready — load a score, then try again.', 'err');
                 } else {
-                    setStatus('SoundFont loaded: ' + file.name);
+                    // The synth applies new presets to notes triggered AFTER
+                    // the load — anything in flight still uses the old bank.
+                    // Stopping playback here forces the next ▶ to re-bind.
+                    try { api.stop?.(); } catch (_) {}
+                    setStatus('SoundFont loaded: ' + file.name + ' — press ▶ to hear it. If silent, toggle 🌊 off.');
                     log('SoundFont loaded: ' + file.name + ' (' + buf.byteLength + ' B)');
                 }
             } catch (err) {
