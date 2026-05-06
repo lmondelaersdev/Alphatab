@@ -1702,26 +1702,42 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // SF2 / SF3 upload — replace alphaTab's default Sonivox SoundFont with
-    // a sampled-instrument one (e.g. a Stratocaster sampleset). alphaTab v1
-    // exposes loadSoundFontFromBytes(buffer, append=false) on the api.
+    // a sampled-instrument one (e.g. a Stratocaster sampleset). The
+    // method name varies across alphaTab releases, so we try the known
+    // ones in order.
     const sf2Input = document.getElementById('sf2-input');
     if (sf2Input) {
         sf2Input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            if (!api?.loadSoundFontFromBytes) {
-                setStatus('alphaTab not ready yet — try again after first play.', 'err');
+            if (!api) {
+                setStatus('Tap ▶ once to boot alphaTab, then upload the SF2.', 'err');
                 sf2Input.value = '';
                 return;
             }
             setStatus('Loading SoundFont: ' + file.name);
             try {
                 const buf = await file.arrayBuffer();
-                api.loadSoundFontFromBytes(new Uint8Array(buf), false);
-                setStatus('SoundFont loaded: ' + file.name);
-                log('SoundFont loaded: ' + file.name + ' (' + buf.byteLength + ' B)');
+                const bytes = new Uint8Array(buf);
+                let result;
+                if (typeof api.loadSoundFont === 'function') {
+                    result = api.loadSoundFont(bytes, false);
+                } else if (typeof api.loadSoundFontFromBytes === 'function') {
+                    result = api.loadSoundFontFromBytes(bytes, false);
+                } else if (api.player && typeof api.player.loadSoundFont === 'function') {
+                    result = api.player.loadSoundFont(bytes, false);
+                } else {
+                    throw new Error('loadSoundFont API not available on this alphaTab build');
+                }
+                if (result === false) {
+                    setStatus('Player not ready — load a score, then try again.', 'err');
+                } else {
+                    setStatus('SoundFont loaded: ' + file.name);
+                    log('SoundFont loaded: ' + file.name + ' (' + buf.byteLength + ' B)');
+                }
             } catch (err) {
                 setStatus('SoundFont load failed: ' + err.message, 'err');
+                log('SoundFont load error: ' + (err.stack || err.message));
             }
             sf2Input.value = '';
         };
