@@ -94,7 +94,10 @@
         <button class="btn" style="padding: 6px 10px; font-size: 0.85rem;" onclick="document.getElementById('file-input').click()" title="Load score (.gp, .gpx, .xml, .pdf)">📁</button>
         <button class="btn" id="btn-upload-mp3" style="padding: 6px 10px; font-size: 0.85rem; background:#334155;" onclick="document.getElementById('mp3-input').click()" title="Upload backing track (MP3/WAV/OGG)">🎵</button>
         <button class="tgl" id="btn-align" title="Align current score with current MP3 (DTW)" onclick="alignCurrentScoreWithMp3()">🎼</button>
+        <button class="tgl on" id="btn-surf" title="Tremolo + spring reverb (surf chain)" onclick="toggleSurf()">🌊</button>
+        <button class="btn" style="padding: 6px 10px; font-size: 0.85rem; background:#475569;" onclick="document.getElementById('sf2-input').click()" title="Load a real-guitar SoundFont (.sf2 / .sf3) — e.g. a Stratocaster sampleset from soundfonts4u">🎚</button>
         <input type="file" id="file-input" style="display:none" />
+        <input type="file" id="sf2-input" accept=".sf2,.sf3" style="display:none" />
         <input type="file" id="mp3-input" style="display:none" />
     </div>
     <div id="main"><div id="at-element"></div></div>
@@ -1177,7 +1180,112 @@ document.addEventListener("DOMContentLoaded", function() {
     window.alignCurrentScoreWithMp3 = alignCurrentScoreWithMp3;
 
     // ─────────────────────────────────────────────────────────────────────
-    // PHASE A — BOOT 
+    // SURF EFFECT CHAIN (tilt EQ → tremolo → spring reverb)
+    // ─────────────────────────────────────────────────────────────────────
+    // alphaTab's internal synth connects directly to AudioContext.destination,
+    // so to insert effects we patch the destination getter to return our
+    // chain's input node. The patch must be applied BEFORE alphaTab is
+    // constructed. AudioContexts created later (e.g. by ad-hoc code) also
+    // route through the chain, which is fine in this app.
+    let surfEnabled = true;
+    const surfNodes = [];
+
+    function makeSpringIR(ctx) {
+        const sr = ctx.sampleRate;
+        const length = Math.floor(sr * 1.4);
+        const ir = ctx.createBuffer(2, length, sr);
+        for (let ch = 0; ch < 2; ch++) {
+            const d = ir.getChannelData(ch);
+            for (let i = 0; i < length; i++) {
+                const t = i / sr;
+                const decay = Math.exp(-t * 2.2);
+                // Springy resonances + decaying noise = recognisable spring tank.
+                const r1 = Math.sin(2 * Math.PI * 220 * t) * 0.30;
+                const r2 = Math.sin(2 * Math.PI * 440 * t) * 0.18;
+                const r3 = Math.sin(2 * Math.PI * 1020 * t) * 0.10;
+                const noise = (Math.random() * 2 - 1) * 0.55;
+                d[i] = decay * (noise + r1 + r2 + r3) * 0.5;
+            }
+        }
+        return ir;
+    }
+
+    function buildSurfChain(ctx) {
+        const dest = ctx.destination;
+        const input = ctx.createGain();
+        const bypass = ctx.createGain();
+        bypass.gain.value = 0;
+
+        const lo = ctx.createBiquadFilter();
+        lo.type = 'lowshelf'; lo.frequency.value = 220; lo.gain.value = -2;
+        const hi = ctx.createBiquadFilter();
+        hi.type = 'highshelf'; hi.frequency.value = 3000; hi.gain.value = 4;
+
+        const trem = ctx.createGain();
+        trem.gain.value = 0.55;
+        const lfo = ctx.createOscillator();
+        lfo.type = 'sine'; lfo.frequency.value = 5.5;
+        const lfoDepth = ctx.createGain();
+        lfoDepth.gain.value = 0.45;
+        lfo.connect(lfoDepth); lfoDepth.connect(trem.gain);
+        try { lfo.start(); } catch (_) {}
+
+        const conv = ctx.createConvolver();
+        conv.buffer = makeSpringIR(ctx);
+        const wet = ctx.createGain(); wet.gain.value = 0.30;
+        const dry = ctx.createGain(); dry.gain.value = 0.85;
+
+        // Effect path: input → lo → hi → trem → [dry → dest, conv → wet → dest]
+        // Bypass path: input → bypass → dest (mixed in/out via gain)
+        input.connect(lo); lo.connect(hi); hi.connect(trem);
+        trem.connect(dry); dry.connect(dest);
+        trem.connect(conv); conv.connect(wet); wet.connect(dest);
+        input.connect(bypass); bypass.connect(dest);
+
+        const setEnabled = (on) => {
+            const t = ctx.currentTime;
+            const ramp = 0.05;
+            (on ? dry : bypass).gain.setTargetAtTime(0.85, t, ramp);
+            (on ? bypass : dry).gain.setTargetAtTime(0,    t, ramp);
+            wet.gain.setTargetAtTime(on ? 0.30 : 0, t, ramp);
+            trem.gain.setTargetAtTime(on ? 0.55 : 1, t, ramp);
+        };
+        setEnabled(surfEnabled);
+
+        // Make ctx.destination return our input so any node connecting to
+        // destination ends up at the head of the chain.
+        try {
+            Object.defineProperty(ctx, 'destination', { get: () => input, configurable: true });
+        } catch (_) {}
+
+        return { ctx, setEnabled };
+    }
+
+    function installSurfPatch() {
+        const Orig = window.AudioContext || window.webkitAudioContext;
+        if (!Orig || Orig.__surfPatched) return;
+        function PatchedCtx(...args) {
+            const ctx = Reflect.construct(Orig, args, PatchedCtx);
+            try { surfNodes.push(buildSurfChain(ctx)); } catch (e) { console.warn('surf chain failed:', e); }
+            return ctx;
+        }
+        PatchedCtx.prototype = Orig.prototype;
+        PatchedCtx.__surfPatched = true;
+        window.AudioContext = PatchedCtx;
+        if (window.webkitAudioContext) window.webkitAudioContext = PatchedCtx;
+    }
+    installSurfPatch();
+
+    function toggleSurf() {
+        surfEnabled = !surfEnabled;
+        for (const n of surfNodes) n.setEnabled(surfEnabled);
+        const btn = document.getElementById('btn-surf');
+        if (btn) btn.classList.toggle('on', surfEnabled);
+    }
+    window.toggleSurf = toggleSurf;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PHASE A — BOOT
     // ─────────────────────────────────────────────────────────────────────
     const btnInit = document.getElementById('btn-initialize');
     if (btnInit) {
@@ -1590,6 +1698,32 @@ document.addEventListener("DOMContentLoaded", function() {
             };
             reader.readAsArrayBuffer(file);
             mp3Input.value = '';
+        };
+    }
+
+    // SF2 / SF3 upload — replace alphaTab's default Sonivox SoundFont with
+    // a sampled-instrument one (e.g. a Stratocaster sampleset). alphaTab v1
+    // exposes loadSoundFontFromBytes(buffer, append=false) on the api.
+    const sf2Input = document.getElementById('sf2-input');
+    if (sf2Input) {
+        sf2Input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!api?.loadSoundFontFromBytes) {
+                setStatus('alphaTab not ready yet — try again after first play.', 'err');
+                sf2Input.value = '';
+                return;
+            }
+            setStatus('Loading SoundFont: ' + file.name);
+            try {
+                const buf = await file.arrayBuffer();
+                api.loadSoundFontFromBytes(new Uint8Array(buf), false);
+                setStatus('SoundFont loaded: ' + file.name);
+                log('SoundFont loaded: ' + file.name + ' (' + buf.byteLength + ' B)');
+            } catch (err) {
+                setStatus('SoundFont load failed: ' + err.message, 'err');
+            }
+            sf2Input.value = '';
         };
     }
 
