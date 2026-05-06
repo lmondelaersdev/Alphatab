@@ -1721,11 +1721,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 const bytes = new Uint8Array(buf);
                 let result;
                 if (typeof api.loadSoundFont === 'function') {
-                    result = api.loadSoundFont(bytes, false);
+                    result = api.loadSoundFont(bytes, true);
                 } else if (typeof api.loadSoundFontFromBytes === 'function') {
-                    result = api.loadSoundFontFromBytes(bytes, false);
+                    result = api.loadSoundFontFromBytes(bytes, true);
                 } else if (api.player && typeof api.player.loadSoundFont === 'function') {
-                    result = api.player.loadSoundFont(bytes, false);
+                    result = api.player.loadSoundFont(bytes, true);
                 } else {
                     throw new Error('loadSoundFont API not available on this alphaTab build');
                 }
