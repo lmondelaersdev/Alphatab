@@ -137,6 +137,7 @@
         <option value="melodic">Melodic m</option>
         <option value="dim">Diminished</option>
     </select>
+    <button class="sbtn" id="btn-related" title="Overlay the related chord (V7→dim7 substitution, minor↔relative major) as a pink stroke" onclick="toggleRelated()" style="color:#ec4899;">🔗 REL</button>
     <span class="sep">|</span>
     <span style="color: #94a3b8; font-weight: bold;">SYNC</span>
     <button class="sbtn" onclick="adjustSync(-1000)">−1s</button>
@@ -215,6 +216,7 @@ document.addEventListener("DOMContentLoaded", function() {
     //   scale → arp + parent-scale tones in muted teal
     let overlayMode = 'off';
     let scaleFlavour = 'natural';   // 'natural'|'harmonic'|'melodic'|'dim'
+    let showRelated = false;
     let activeChordName = "";
     let extCycle = 0;
     let baseChord = "";
@@ -677,6 +679,53 @@ document.addEventListener("DOMContentLoaded", function() {
         return 'major';
     }
 
+    // Compute chord symbols related to the active chord. Most useful:
+    //   V7  → dim7 a half-step above the root (rootless V7♭9 substitute)
+    //   m   → relative major triad (a m3 above root)
+    //   M   → relative minor triad (a M6 above root)
+    // Returns an array of chord symbols suitable for Tonal.Chord.get.
+    const PC_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    function relatedChordSymbols(chordData) {
+        if (!chordData?.tonic) return [];
+        const tonicPc = Tonal.Note.get(chordData.tonic).chroma;
+        if (tonicPc == null) return [];
+        const pc = (n) => PC_NAMES[((tonicPc + n) % 12 + 12) % 12];
+        const t = (chordData.type || '').toLowerCase();
+        if (/dominant|seventh suspended/.test(t)) {
+            return [`${pc(1)}dim7`];           // V7 → bII°7 (= rootless V7b9)
+        }
+        if (/half|m7b5|flat five/.test(t)) {
+            return [`${pc(0)}dim7`];           // ø ↔ °7 on same root
+        }
+        if (/diminished/.test(t)) {
+            // dim7 is symmetric — show the three other inversions
+            return [`${pc(3)}dim7`, `${pc(6)}dim7`, `${pc(9)}dim7`];
+        }
+        if (/^minor|minor sixth|minor seventh|minor ninth|^m/.test(t)) {
+            return [`${pc(3)}`];                // m → relative major triad
+        }
+        if (/major|sixth|seventh|ninth/.test(t)) {
+            return [`${pc(9)}m`];               // M → relative minor triad
+        }
+        return [];
+    }
+
+    function toggleRelated() {
+        showRelated = !showRelated;
+        const btn = document.getElementById('btn-related');
+        if (btn) btn.classList.toggle('on', showRelated);
+        try { localStorage.setItem('alphaTab.showRelated', showRelated ? '1' : '0'); } catch (_) {}
+        repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+    }
+    window.toggleRelated = toggleRelated;
+    try {
+        showRelated = localStorage.getItem('alphaTab.showRelated') === '1';
+    } catch (_) {}
+    document.addEventListener('DOMContentLoaded', () => {
+        const btn = document.getElementById('btn-related');
+        if (btn) btn.classList.toggle('on', showRelated);
+    });
+
     function setScaleFlavour(v) {
         scaleFlavour = v;
         try { localStorage.setItem('alphaTab.scaleFlavour', v); } catch (_) {}
@@ -778,6 +827,39 @@ document.addEventListener("DOMContentLoaded", function() {
                             dot.setAttribute('r', '5');
                             txt.textContent = (scaleIntervals[scaleIdx] || '').replace(/M|m|P|d|A/g, '');
                             txt.style.opacity = '0.75';
+                        }
+                    }
+                }
+            }
+        }
+
+        // Related-chord overlay: pink stroke around every (string,fret)
+        // that's a chord tone of a related chord (V7→dim7 sub, etc).
+        // Runs after the main overlay so it can preserve existing fills.
+        if (showRelated && activeChordName && typeof Tonal !== 'undefined') {
+            const cd = Tonal.Chord.get(activeChordName);
+            const rels = relatedChordSymbols(cd);
+            const relChromas = new Set();
+            for (const sym of rels) {
+                const rd = Tonal.Chord.get(sym);
+                if (!rd.empty) for (const n of rd.notes) {
+                    const c = Tonal.Note.get(n).chroma;
+                    if (c != null) relChromas.add(c);
+                }
+            }
+            if (relChromas.size) {
+                for (let s = 1; s <= FB.strings; s++) {
+                    for (let f = 0; f <= FB.frets; f++) {
+                        const midi = standardTuningMidi[s - 1] + f;
+                        if (!relChromas.has(midi % 12)) continue;
+                        const dot = fbDotMap.get(`${s}-${f}`);
+                        if (!dot) continue;
+                        dot.setAttribute('stroke', '#ec4899');
+                        dot.setAttribute('stroke-width', '2');
+                        const fill = dot.getAttribute('fill');
+                        if (!fill || fill === 'transparent') {
+                            dot.setAttribute('fill', 'rgba(236, 72, 153, 0.18)');
+                            dot.setAttribute('r', '5.5');
                         }
                     }
                 }
