@@ -37,6 +37,10 @@
 
         #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
         #mixer-row { background: var(--surface); border-top: 1px solid #334155; padding: 6px 10px; flex-shrink: 0; font-size: 0.7rem; display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; }
+        #key-strip { background:#0f172a; color:#94a3b8; font-family:monospace; font-size:0.72rem; padding:4px 12px; border-top:1px solid #1e293b; border-bottom:1px solid #1e293b; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #key-strip .ks-key { color:#fbbf24; }
+        #key-strip .ks-now { color:#e94560; }
+        #key-strip .ks-rom { color:#7dd3fc; font-weight:bold; }
         .mixer-track { display: flex; align-items: center; gap: 4px; background: #0f172a; border-radius: 4px; padding: 4px 6px; }
         .mixer-track .name { color: #e2e8f0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
         .mixer-track .m-btn, .mixer-track .s-btn { width: 22px; height: 22px; border: none; border-radius: 3px; background: #334155; color: #94a3b8; font-size: 0.7rem; font-weight: bold; cursor: pointer; padding: 0; }
@@ -101,6 +105,7 @@
         <input type="file" id="sf2-input" accept=".sf2,.sf3" style="display:none" />
         <input type="file" id="mp3-input" style="display:none" />
     </div>
+    <div id="key-strip" title="Detected song key + Roman-numeral of the current chord">—</div>
     <div id="main"><div id="at-element"></div></div>
     <div id="footer">
         <button class="btn" id="btn-play" disabled style="width: 50px; height: 40px; font-size: 1.3rem; padding: 0;">▶</button>
@@ -136,6 +141,14 @@
         <option value="harmonic">Harmonic m</option>
         <option value="melodic">Melodic m</option>
         <option value="dim">Diminished</option>
+    </select>
+    <select id="scale-box" title="Restrict the scale overlay to a position/box on the neck" onchange="setScaleBox(this.value)" style="background:#1e293b;color:#fbbf24;border:1px solid #334155;border-radius:4px;padding:3px 4px;font-size:0.75rem;">
+        <option value="all">All neck</option>
+        <option value="1">Pos 1</option>
+        <option value="2">Pos 2</option>
+        <option value="3">Pos 3</option>
+        <option value="4">Pos 4</option>
+        <option value="5">Pos 5</option>
     </select>
     <button class="sbtn" id="btn-related" title="Overlay the related chord (V7→dim7 substitution, minor↔relative major) as a pink stroke" onclick="toggleRelated()" style="color:#ec4899;">🔗 REL</button>
     <span class="sep">|</span>
@@ -216,8 +229,10 @@ document.addEventListener("DOMContentLoaded", function() {
     //   scale → arp + parent-scale tones in muted teal
     let overlayMode = 'off';
     let scaleFlavour = 'natural';   // 'natural'|'harmonic'|'melodic'|'dim'
+    let scaleBox = 'all';           // 'all'|'1'|'2'|'3'|'4'|'5'
     let showRelated = false;
     let activeChordName = "";
+    let songKey = null;             // { tonic: 'B', mode: 'minor' } | null
     let extCycle = 0;
     let baseChord = "";
     const standardTuningMidi = [64, 59, 55, 50, 45, 40]; 
@@ -731,7 +746,10 @@ document.addEventListener("DOMContentLoaded", function() {
         try { localStorage.setItem('alphaTab.scaleFlavour', v); } catch (_) {}
         const sel = document.getElementById('scale-flavour');
         if (sel && sel.value !== v) sel.value = v;
-        if (overlayMode === 'scale') repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+        if (overlayMode === 'scale') {
+            repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+            updateKeyStrip();
+        }
     }
     window.setScaleFlavour = setScaleFlavour;
     try {
@@ -742,6 +760,141 @@ document.addEventListener("DOMContentLoaded", function() {
         const sel = document.getElementById('scale-flavour');
         if (sel) sel.value = scaleFlavour;
     });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // SCALE-BOX RESTRICTION (positions 1-5)
+    // ─────────────────────────────────────────────────────────────────────
+    // Each pentatonic/CAGED position is a roughly-4-fret window relative
+    // to the song key's root on string 6 (low E). Returns [minFret,
+    // maxFret] for a given rootPc and box index. 'all' returns null
+    // (= no restriction).
+    function scaleBoxWindow(rootPc, box) {
+        if (box === 'all' || rootPc == null) return null;
+        const lowE = 4;
+        const rootFret = ((rootPc - lowE) % 12 + 12) % 12;
+        const offsets = { '1': [0, 3], '2': [2, 5], '3': [4, 7], '4': [7, 10], '5': [9, 12] };
+        const off = offsets[box];
+        if (!off) return null;
+        // Return the primary window AND its octave-shifted twin so the
+        // pattern is visible at both ends of the neck.
+        return [
+            [rootFret + off[0], rootFret + off[1]],
+            [rootFret + off[0] + 12, rootFret + off[1] + 12],
+        ];
+    }
+
+    function setScaleBox(v) {
+        scaleBox = v;
+        try { localStorage.setItem('alphaTab.scaleBox', v); } catch (_) {}
+        const sel = document.getElementById('scale-box');
+        if (sel && sel.value !== v) sel.value = v;
+        if (overlayMode === 'scale') {
+            repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+            updateKeyStrip();
+        }
+    }
+    window.setScaleBox = setScaleBox;
+    try {
+        const saved = localStorage.getItem('alphaTab.scaleBox');
+        if (saved) scaleBox = saved;
+    } catch (_) {}
+    document.addEventListener('DOMContentLoaded', () => {
+        const sel = document.getElementById('scale-box');
+        if (sel) sel.value = scaleBox;
+    });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // KEY DETECTION + ROMAN NUMERAL STRIP
+    // ─────────────────────────────────────────────────────────────────────
+    // Map alphaTab's keySignature (-7..+7 = flats/sharps) to a major
+    // tonic; then check the first chord in the score to decide major vs
+    // its relative minor.
+    const KS_TO_MAJOR_TONIC = {
+        '-7': 'Cb', '-6': 'Gb', '-5': 'Db', '-4': 'Ab', '-3': 'Eb', '-2': 'Bb', '-1': 'F',
+        '0': 'C',
+        '1': 'G', '2': 'D', '3': 'A', '4': 'E', '5': 'B', '6': 'F#', '7': 'C#',
+    };
+
+    function findFirstChordSymbol(score) {
+        for (const track of (score?.tracks || [])) {
+            for (const staff of (track.staves || [])) {
+                for (const bar of (staff.bars || [])) {
+                    for (const voice of (bar.voices || [])) {
+                        for (const beat of (voice.beats || [])) {
+                            if (beat.chord?.name) return beat.chord.name;
+                            const n0 = beat.notes?.[0];
+                            if (n0 && Number.isFinite(n0.realValue)) return null; // bail to caller
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    function detectSongKey(score) {
+        const ks = score?.masterBars?.[0]?.keySignature;
+        const majorTonic = KS_TO_MAJOR_TONIC[String(ks)] ?? 'C';
+        const firstChord = findFirstChordSymbol(score);
+        if (firstChord) {
+            const c = Tonal.Chord.get(firstChord);
+            const t = (c?.type || '').toLowerCase();
+            if (/minor|m7b5|half|diminished/.test(t) && c.tonic) {
+                return { tonic: c.tonic, mode: 'minor' };
+            }
+        }
+        // Default: assume major from the key signature.
+        return { tonic: majorTonic, mode: 'major' };
+    }
+
+    const ROMAN_MAJOR = ['I','♭II','II','♭III','III','IV','♭V','V','♭VI','VI','♭VII','VII'];
+    const ROMAN_MINOR = ['i','♭II','ii','III','♯III','iv','♭V','v','VI','♯vi','VII','♯vii'];
+
+    function chordToRoman(chordSymbol, key) {
+        if (!key || !chordSymbol || typeof Tonal === 'undefined') return '';
+        const c = Tonal.Chord.get(chordSymbol);
+        if (c.empty || !c.tonic) return '';
+        const tonicPc = Tonal.Note.get(key.tonic).chroma;
+        const chordPc = Tonal.Note.get(c.tonic).chroma;
+        if (tonicPc == null || chordPc == null) return '';
+        const interval = ((chordPc - tonicPc) % 12 + 12) % 12;
+        let roman = (key.mode === 'minor' ? ROMAN_MINOR : ROMAN_MAJOR)[interval];
+        const t = (c.type || '').toLowerCase();
+        // Adjust case for chord quality.
+        if (/minor|m7b5|half|diminished/.test(t)) roman = roman.toLowerCase();
+        else if (/major|dominant|augmented/.test(t)) roman = roman.toUpperCase();
+        // Suffix.
+        if (/dominant/.test(t))   roman += '7';
+        else if (/half|m7b5/.test(t)) roman += 'ø7';
+        else if (/diminished seventh/.test(t)) roman += '°7';
+        else if (/diminished/.test(t))         roman += '°';
+        else if (/augmented/.test(t))          roman += '+';
+        else if (/major seventh/.test(t))      roman += 'M7';
+        else if (/minor seventh/.test(t))      roman += '7';
+        else if (/major sixth/.test(t))        roman += '6';
+        return roman;
+    }
+
+    function updateKeyStrip() {
+        const el = document.getElementById('key-strip');
+        if (!el) return;
+        const parts = [];
+        if (songKey) {
+            parts.push(`<span class="ks-key">Key:</span> ${songKey.tonic} ${songKey.mode}`);
+        }
+        if (activeChordName) {
+            const rn = chordToRoman(activeChordName, songKey);
+            parts.push(`<span class="ks-now">Now:</span> ${activeChordName}` + (rn ? ` <span class="ks-rom">(${rn})</span>` : ''));
+        }
+        if (overlayMode === 'scale' && activeChordName && typeof Tonal !== 'undefined') {
+            const c = Tonal.Chord.get(activeChordName);
+            if (!c.empty) {
+                const sn = chordToScaleName(c, scaleFlavour);
+                parts.push(`<span class="ks-key">Scale:</span> ${c.tonic} ${sn}` + (scaleBox !== 'all' ? ` · Pos ${scaleBox}` : ''));
+            }
+        }
+        el.innerHTML = parts.join(' &nbsp;·&nbsp; ') || '—';
+    }
 
     function toggleTheory() {
         overlayMode = overlayMode === 'off'  ? 'arp'
@@ -755,6 +908,7 @@ document.addEventListener("DOMContentLoaded", function() {
                             : '🎓 SCALE';
         }
         repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+        updateKeyStrip();
     }
     window.toggleTheory = toggleTheory;
 
@@ -796,6 +950,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!chordData.empty) {
                 const chordChromas = chordData.notes.map(n => Tonal.Note.chroma(n));
                 let scaleChromas = [], scaleIntervals = [];
+                let boxWindows = null;
                 if (overlayMode === 'scale' && chordData.tonic) {
                     const scaleName = chordToScaleName(chordData, scaleFlavour);
                     const scaleData = Tonal.Scale.get(`${chordData.tonic} ${scaleName}`);
@@ -803,7 +958,16 @@ document.addEventListener("DOMContentLoaded", function() {
                         scaleChromas = scaleData.notes.map(n => Tonal.Note.chroma(n));
                         scaleIntervals = scaleData.intervals;
                     }
+                    // Box restriction anchors on the SONG key tonic if
+                    // known (so the box stays put across chord changes);
+                    // falls back to the current chord's root.
+                    const anchorPc = songKey
+                        ? Tonal.Note.get(songKey.tonic).chroma
+                        : Tonal.Note.get(chordData.tonic).chroma;
+                    boxWindows = scaleBoxWindow(anchorPc, scaleBox);
                 }
+                const inBox = (fret) => !boxWindows || boxWindows.some(([lo, hi]) => fret >= lo && fret <= hi);
+
                 for (let s = 1; s <= FB.strings; s++) {
                     for (let f = 0; f <= FB.frets; f++) {
                         const midi = standardTuningMidi[s - 1] + f;
@@ -814,15 +978,16 @@ document.addEventListener("DOMContentLoaded", function() {
                         const dot = fbDotMap.get(key);
                         const txt = fbTxtMap.get(key);
                         if (!dot || !txt) continue;
+                        // Chord tones always paint (so the user can find
+                        // them anywhere on the neck). Scale tones only
+                        // paint inside the selected box.
                         if (chordIdx !== -1) {
                             const ivl = chordData.intervals[chordIdx];
                             dot.setAttribute('fill', getIntervalColor(ivl));
                             dot.setAttribute('r', '6');
                             txt.textContent = ivl.replace(/M|m|P|d|A/g, '');
                             txt.style.opacity = '1';
-                        } else if (scaleIdx !== -1) {
-                            // Non-chord scale tone — muted teal, smaller dot
-                            // so chord tones still pop out of the pattern.
+                        } else if (scaleIdx !== -1 && inBox(f)) {
                             dot.setAttribute('fill', 'rgba(20, 184, 166, 0.40)');
                             dot.setAttribute('r', '5');
                             txt.textContent = (scaleIntervals[scaleIdx] || '').replace(/M|m|P|d|A/g, '');
@@ -1642,8 +1807,14 @@ document.addEventListener("DOMContentLoaded", function() {
 
             forceCleanElectricGuitar(score);
 
+            try {
+                songKey = detectSongKey(score);
+                log(`Key: ${songKey.tonic} ${songKey.mode}`);
+            } catch (e) { songKey = null; log('Key detection failed: ' + e.message); }
+
             activeChordName = "";
             extCycle = 0;
+            updateKeyStrip();
             baseChord = "";
             const clabel = document.getElementById('fb-chord-label');
             if(clabel) clabel.textContent = "";
@@ -1696,7 +1867,10 @@ document.addEventListener("DOMContentLoaded", function() {
             const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
 
             const newChord = extractChordFromBeat(b);
-            if (newChord) activeChordName = newChord;
+            if (newChord && newChord !== activeChordName) {
+                activeChordName = newChord;
+                updateKeyStrip();
+            }
 
             repaintFretboard(barIdx, collectSoundingNotes(b));
         });
@@ -1707,7 +1881,10 @@ document.addEventListener("DOMContentLoaded", function() {
             const barIdx = b.voice?.bar?.masterBar?.index ?? b.voice?.bar?.index ?? -1;
 
             const newChord = extractChordFromBeat(b);
-            if (newChord) activeChordName = newChord;
+            if (newChord && newChord !== activeChordName) {
+                activeChordName = newChord;
+                updateKeyStrip();
+            }
 
             repaintFretboard(barIdx, collectSoundingNotes(b));
 
