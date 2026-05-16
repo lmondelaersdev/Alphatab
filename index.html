@@ -130,7 +130,7 @@
     <button class="sbtn" onclick="adjustZoom(-0.1)">−🔍</button>
     <button class="sbtn" onclick="adjustZoom(0.1)">+🔍</button>
     <span class="sep">|</span>
-    <button class="sbtn" id="btn-theory" title="Toggle Theory Matrix" onclick="toggleTheory()" style="color:#fbbf24;">🎓 THEORY</button>
+    <button class="sbtn" id="btn-theory" title="Cycle overlay: off → arpeggio (chord tones) → scale (chord tones + parent scale)" onclick="toggleTheory()" style="color:#fbbf24;">🎓 THEORY</button>
     <span class="sep">|</span>
     <span style="color: #94a3b8; font-weight: bold;">SYNC</span>
     <button class="sbtn" onclick="adjustSync(-1000)">−1s</button>
@@ -203,7 +203,11 @@ document.addEventListener("DOMContentLoaded", function() {
     let currentTrackIdx = -1;   
 
     // THEORY ENGINE STATE
-    let theoryMode = false;
+    // overlayMode: 'off' | 'arp' | 'scale'
+    //   off   → no theory overlay (just played notes light up)
+    //   arp   → every fret position that's a chord tone, coloured by interval
+    //   scale → arp + parent-scale tones in muted teal
+    let overlayMode = 'off';
     let activeChordName = "";
     let extCycle = 0;
     let baseChord = "";
@@ -615,10 +619,31 @@ document.addEventListener("DOMContentLoaded", function() {
         return chordName;
     }
 
+    // Pick a default parent scale for a chord based on its Tonal `type`.
+    // Conservative choices that keep the overlay reading "in style" with
+    // the chord: dominant → Mixolydian, half-dim/m7b5 → Locrian, etc.
+    function chordToScaleName(chordData) {
+        const t = (chordData?.type || '').toLowerCase();
+        if (/half|m7b5|flat five/.test(t)) return 'locrian';
+        if (/diminished/.test(t))          return 'locrian';
+        if (/augmented/.test(t))           return 'lydian augmented';
+        if (/dominant|seventh suspended/.test(t)) return 'mixolydian';
+        if (/minor/.test(t))               return 'aeolian';
+        if (/major|suspended|fifth/.test(t)) return 'major';
+        return 'major';
+    }
+
     function toggleTheory() {
-        theoryMode = !theoryMode;
+        overlayMode = overlayMode === 'off'  ? 'arp'
+                    : overlayMode === 'arp'  ? 'scale'
+                    : 'off';
         const btn = document.getElementById('btn-theory');
-        if(btn) btn.classList.toggle('on', theoryMode);
+        if (btn) {
+            btn.classList.toggle('on', overlayMode !== 'off');
+            btn.textContent = overlayMode === 'off'   ? '🎓 THEORY'
+                            : overlayMode === 'arp'   ? '🎓 ARP'
+                            : '🎓 SCALE';
+        }
         repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
     }
     window.toggleTheory = toggleTheory;
@@ -656,26 +681,42 @@ document.addEventListener("DOMContentLoaded", function() {
         const badgeLayer = document.getElementById('fb-badges');
         if (badgeLayer) badgeLayer.replaceChildren();
 
-        if (theoryMode && activeChordName && typeof Tonal !== 'undefined') {
+        if (overlayMode !== 'off' && activeChordName && typeof Tonal !== 'undefined') {
             const chordData = Tonal.Chord.get(activeChordName);
             if (!chordData.empty) {
                 const chordChromas = chordData.notes.map(n => Tonal.Note.chroma(n));
+                let scaleChromas = [], scaleIntervals = [];
+                if (overlayMode === 'scale' && chordData.tonic) {
+                    const scaleName = chordToScaleName(chordData);
+                    const scaleData = Tonal.Scale.get(`${chordData.tonic} ${scaleName}`);
+                    if (!scaleData.empty) {
+                        scaleChromas = scaleData.notes.map(n => Tonal.Note.chroma(n));
+                        scaleIntervals = scaleData.intervals;
+                    }
+                }
                 for (let s = 1; s <= FB.strings; s++) {
                     for (let f = 0; f <= FB.frets; f++) {
                         const midi = standardTuningMidi[s - 1] + f;
                         const chroma = midi % 12;
-                        const noteIdx = chordChromas.indexOf(chroma);
-                        if (noteIdx !== -1) {
-                            const key = `${s}-${f}`;
-                            const dot = fbDotMap.get(key);
-                            const txt = fbTxtMap.get(key);
-                            if (dot && txt) {
-                                const ivl = chordData.intervals[noteIdx];
-                                dot.setAttribute('fill', getIntervalColor(ivl));
-                                dot.setAttribute('r', '6');
-                                txt.textContent = ivl.replace(/M|m|P|d|A/g, ''); 
-                                txt.style.opacity = '1';
-                            }
+                        const chordIdx = chordChromas.indexOf(chroma);
+                        const scaleIdx = scaleChromas.indexOf(chroma);
+                        const key = `${s}-${f}`;
+                        const dot = fbDotMap.get(key);
+                        const txt = fbTxtMap.get(key);
+                        if (!dot || !txt) continue;
+                        if (chordIdx !== -1) {
+                            const ivl = chordData.intervals[chordIdx];
+                            dot.setAttribute('fill', getIntervalColor(ivl));
+                            dot.setAttribute('r', '6');
+                            txt.textContent = ivl.replace(/M|m|P|d|A/g, '');
+                            txt.style.opacity = '1';
+                        } else if (scaleIdx !== -1) {
+                            // Non-chord scale tone — muted teal, smaller dot
+                            // so chord tones still pop out of the pattern.
+                            dot.setAttribute('fill', 'rgba(20, 184, 166, 0.40)');
+                            dot.setAttribute('r', '5');
+                            txt.textContent = (scaleIntervals[scaleIdx] || '').replace(/M|m|P|d|A/g, '');
+                            txt.style.opacity = '0.75';
                         }
                     }
                 }
@@ -687,7 +728,7 @@ document.addEventListener("DOMContentLoaded", function() {
             barSet.forEach(key => {
                 const el = fbDotMap.get(key);
                 if (el) {
-                    if (theoryMode && activeChordName) {
+                    if (overlayMode !== 'off' && activeChordName) {
                         el.setAttribute('stroke', 'rgba(255,255,255,0.9)');
                         el.setAttribute('stroke-width', '1.5');
                     } else {
