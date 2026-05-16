@@ -131,6 +131,12 @@
     <button class="sbtn" onclick="adjustZoom(0.1)">+🔍</button>
     <span class="sep">|</span>
     <button class="sbtn" id="btn-theory" title="Cycle overlay: off → arpeggio (chord tones) → scale (chord tones + parent scale)" onclick="toggleTheory()" style="color:#fbbf24;">🎓 THEORY</button>
+    <select id="scale-flavour" title="Scale family used in SCALE mode" onchange="setScaleFlavour(this.value)" style="background:#1e293b;color:#fbbf24;border:1px solid #334155;border-radius:4px;padding:3px 4px;font-size:0.75rem;">
+        <option value="natural">Natural</option>
+        <option value="harmonic">Harmonic m</option>
+        <option value="melodic">Melodic m</option>
+        <option value="dim">Diminished</option>
+    </select>
     <span class="sep">|</span>
     <span style="color: #94a3b8; font-weight: bold;">SYNC</span>
     <button class="sbtn" onclick="adjustSync(-1000)">−1s</button>
@@ -208,6 +214,7 @@ document.addEventListener("DOMContentLoaded", function() {
     //   arp   → every fret position that's a chord tone, coloured by interval
     //   scale → arp + parent-scale tones in muted teal
     let overlayMode = 'off';
+    let scaleFlavour = 'natural';   // 'natural'|'harmonic'|'melodic'|'dim'
     let activeChordName = "";
     let extCycle = 0;
     let baseChord = "";
@@ -619,19 +626,73 @@ document.addEventListener("DOMContentLoaded", function() {
         return chordName;
     }
 
-    // Pick a default parent scale for a chord based on its Tonal `type`.
-    // Conservative choices that keep the overlay reading "in style" with
-    // the chord: dominant → Mixolydian, half-dim/m7b5 → Locrian, etc.
-    function chordToScaleName(chordData) {
+    // Pick a parent scale for a chord based on its Tonal `type` and the
+    // user-selected scale flavour. Flavours:
+    //
+    //   natural    → Ionian / Aeolian / Mixolydian / Locrian / Lydian-aug
+    //   harmonic   → minor → harmonic minor; V7 → Phrygian dominant
+    //   melodic    → minor → melodic minor; V7 → altered; maj → Lydian
+    //   dim        → dim/m7b5 → whole-half dim; V7 → half-whole dim
+    //                (other qualities fall back to natural)
+    //
+    // Scale names match Tonal.Scale.get(...) keys.
+    function chordToScaleName(chordData, flavour) {
+        flavour = flavour || 'natural';
         const t = (chordData?.type || '').toLowerCase();
-        if (/half|m7b5|flat five/.test(t)) return 'locrian';
-        if (/diminished/.test(t))          return 'locrian';
-        if (/augmented/.test(t))           return 'lydian augmented';
-        if (/dominant|seventh suspended/.test(t)) return 'mixolydian';
-        if (/minor/.test(t))               return 'aeolian';
-        if (/major|suspended|fifth/.test(t)) return 'major';
+        const isHalfDim = /half|m7b5|flat five/.test(t);
+        const isDim = /diminished/.test(t) && !isHalfDim;
+        const isAug = /augmented/.test(t);
+        const isDom = /dominant|seventh suspended/.test(t);
+        const isMinor = /minor/.test(t) && !isHalfDim;
+        const isMajor = !isMinor && !isDom && !isDim && !isHalfDim && !isAug;
+
+        if (flavour === 'harmonic') {
+            if (isMinor)   return 'harmonic minor';
+            if (isDom)     return 'phrygian dominant';
+            if (isHalfDim) return 'locrian';
+            if (isAug)     return 'lydian augmented';
+            if (isDim)     return 'whole half diminished';
+            return 'major';
+        }
+        if (flavour === 'melodic') {
+            if (isMinor)   return 'melodic minor';
+            if (isDom)     return 'altered';
+            if (isHalfDim) return 'locrian pentatonic';   // ≈ Locrian #2 family
+            if (isAug)     return 'lydian augmented';
+            if (isDim)     return 'whole half diminished';
+            if (isMajor)   return 'lydian';
+            return 'major';
+        }
+        if (flavour === 'dim') {
+            if (isDim || isHalfDim) return 'whole half diminished';
+            if (isDom)              return 'half whole diminished';
+            // Other qualities have no good dim mapping → natural fallback.
+        }
+        // natural (default + fallback for unmapped flavour×quality combos)
+        if (isHalfDim) return 'locrian';
+        if (isDim)     return 'locrian';
+        if (isAug)     return 'lydian augmented';
+        if (isDom)     return 'mixolydian';
+        if (isMinor)   return 'aeolian';
         return 'major';
     }
+
+    function setScaleFlavour(v) {
+        scaleFlavour = v;
+        try { localStorage.setItem('alphaTab.scaleFlavour', v); } catch (_) {}
+        const sel = document.getElementById('scale-flavour');
+        if (sel && sel.value !== v) sel.value = v;
+        if (overlayMode === 'scale') repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+    }
+    window.setScaleFlavour = setScaleFlavour;
+    try {
+        const saved = localStorage.getItem('alphaTab.scaleFlavour');
+        if (saved) scaleFlavour = saved;
+    } catch (_) {}
+    document.addEventListener('DOMContentLoaded', () => {
+        const sel = document.getElementById('scale-flavour');
+        if (sel) sel.value = scaleFlavour;
+    });
 
     function toggleTheory() {
         overlayMode = overlayMode === 'off'  ? 'arp'
@@ -687,7 +748,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const chordChromas = chordData.notes.map(n => Tonal.Note.chroma(n));
                 let scaleChromas = [], scaleIntervals = [];
                 if (overlayMode === 'scale' && chordData.tonic) {
-                    const scaleName = chordToScaleName(chordData);
+                    const scaleName = chordToScaleName(chordData, scaleFlavour);
                     const scaleData = Tonal.Scale.get(`${chordData.tonic} ${scaleName}`);
                     if (!scaleData.empty) {
                         scaleChromas = scaleData.notes.map(n => Tonal.Note.chroma(n));
