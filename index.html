@@ -1405,7 +1405,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const disp = document.getElementById('sync-display');
         if(disp) disp.textContent = sign + syncOffsetMs + ' ms';
         if (api?.player?.output && externalAudio) {
-            api.player.output.updatePosition(((externalAudio.currentTime / externalAudio.playbackRate) * 1000) + syncOffsetMs);
+            api.player.output.updatePosition((externalAudio.currentTime * 1000) + syncOffsetMs);
         }
         persistSync();
     }
@@ -2190,7 +2190,7 @@ document.addEventListener("DOMContentLoaded", function() {
             get masterVolume() { return externalAudio.volume; },
             set masterVolume(v) { externalAudio.volume = v; },
             seekTo(timeMs) {
-                externalAudio.currentTime = (timeMs * externalAudio.playbackRate) / 1000;
+                externalAudio.currentTime = timeMs / 1000;
             },
             play() {
                 externalAudio.play().catch(e => log("audio.play() rejected: " + e.message));
@@ -2215,7 +2215,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const audioSec = externalAudio.currentTime;
                 const scoreMs = alignmentActive
                     ? audioSecToScoreMs(audioSec)
-                    : ((audioSec / externalAudio.playbackRate) * 1000) + syncOffsetMs;
+                    : (audioSec * 1000) + syncOffsetMs;
                 out.updatePosition(scoreMs);
             }
         };
