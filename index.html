@@ -38,6 +38,19 @@
         #practice-row { min-height: 42px; background: var(--surface); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex-shrink: 0; border-top: 1px solid #334155; font-size: 0.7rem; flex-wrap: wrap; }
         #mixer-row { background: var(--surface); border-top: 1px solid #334155; padding: 6px 10px; flex-shrink: 0; font-size: 0.7rem; display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; }
         #key-strip { background:#0f172a; color:#94a3b8; font-family:monospace; font-size:0.72rem; padding:4px 12px; border-top:1px solid #1e293b; border-bottom:1px solid #1e293b; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #voicings-popover { display:none; position:fixed; z-index:9999; left:50%; bottom:170px; transform:translateX(-50%); background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; box-shadow:0 6px 24px rgba(0,0,0,0.5); max-width:96vw; }
+        #voicings-popover.open { display:block; }
+        #voicings-popover .vp-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+        #voicings-popover #vp-title { color:#fbbf24; font-weight:700; font-size:0.95rem; font-family:monospace; }
+        #voicings-popover #vp-quality { color:#7dd3fc; font-size:0.75rem; font-family:monospace; }
+        #voicings-popover #vp-close { margin-left:auto; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:4px; padding:2px 8px; cursor:pointer; }
+        #voicings-popover #vp-quality-row { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px; }
+        #voicings-popover .vp-q { background:#1e293b; color:#cbd5e1; border:1px solid #334155; border-radius:4px; padding:3px 8px; font-family:monospace; font-size:0.72rem; cursor:pointer; }
+        #voicings-popover .vp-q.on { background:#fbbf24; color:#0f172a; border-color:#fbbf24; }
+        #voicings-popover #vp-shapes { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+        #voicings-popover .vp-item { background:#1e293b; border:1px solid #334155; border-radius:6px; padding:6px; cursor:pointer; }
+        #voicings-popover .vp-item:hover { background:#334155; }
+        #voicings-popover .vp-item svg { display:block; }
         #key-strip .ks-key { color:#fbbf24; }
         #key-strip .ks-now { color:#e94560; }
         #key-strip .ks-rom { color:#7dd3fc; font-weight:bold; }
@@ -107,6 +120,15 @@
     </div>
     <div id="key-strip" title="Detected song key + Roman-numeral of the current chord">—</div>
     <div id="main"><div id="at-element"></div></div>
+    <div id="voicings-popover" role="dialog" aria-hidden="true">
+        <div class="vp-head">
+            <span id="vp-title">—</span>
+            <span id="vp-quality"></span>
+            <button id="vp-close" onclick="closeVoicings()">✕</button>
+        </div>
+        <div id="vp-quality-row"></div>
+        <div id="vp-shapes"></div>
+    </div>
     <div id="footer">
         <button class="btn" id="btn-play" disabled style="width: 50px; height: 40px; font-size: 1.3rem; padding: 0;">▶</button>
         <div style="flex:1;">
@@ -151,6 +173,7 @@
         <option value="5">Pos 5</option>
     </select>
     <button class="sbtn" id="btn-related" title="Overlay the related chord (V7→dim7 substitution, minor↔relative major) as a pink stroke" onclick="toggleRelated()" style="color:#ec4899;">🔗 REL</button>
+    <button class="sbtn" id="btn-notes" title="Show note names on every fret instead of interval labels" onclick="toggleNoteNames()" style="color:#a3e635;">🔤 NOTES</button>
     <span class="sep">|</span>
     <span style="color: #94a3b8; font-weight: bold;">SYNC</span>
     <button class="sbtn" onclick="adjustSync(-1000)">−1s</button>
@@ -231,11 +254,15 @@ document.addEventListener("DOMContentLoaded", function() {
     let scaleFlavour = 'natural';   // 'natural'|'harmonic'|'melodic'|'dim'
     let scaleBox = 'all';           // 'all'|'1'|'2'|'3'|'4'|'5'
     let showRelated = false;
+    let showNoteNames = false;
     let activeChordName = "";
     let songKey = null;             // { tonic: 'B', mode: 'minor' } | null
     let extCycle = 0;
     let baseChord = "";
-    const standardTuningMidi = [64, 59, 55, 50, 45, 40]; 
+    const standardTuningMidi = [64, 59, 55, 50, 45, 40];
+    const NOTE_NAMES_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    // Tuning indexed by alphaTab string convention (s=1 = high E, s=6 = low E).
+    const STRING_MIDI_BY_AT = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
 
     // ─────────────────────────────────────────────────────────────────────
     // RESIZABLE FRETBOARD DRAG LOGIC
@@ -733,6 +760,22 @@ document.addEventListener("DOMContentLoaded", function() {
         repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
     }
     window.toggleRelated = toggleRelated;
+
+    function toggleNoteNames() {
+        showNoteNames = !showNoteNames;
+        const btn = document.getElementById('btn-notes');
+        if (btn) btn.classList.toggle('on', showNoteNames);
+        try { localStorage.setItem('alphaTab.showNoteNames', showNoteNames ? '1' : '0'); } catch (_) {}
+        repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+    }
+    window.toggleNoteNames = toggleNoteNames;
+    try {
+        showNoteNames = localStorage.getItem('alphaTab.showNoteNames') === '1';
+    } catch (_) {}
+    document.addEventListener('DOMContentLoaded', () => {
+        const btn = document.getElementById('btn-notes');
+        if (btn) btn.classList.toggle('on', showNoteNames);
+    });
     try {
         showRelated = localStorage.getItem('alphaTab.showRelated') === '1';
     } catch (_) {}
@@ -912,18 +955,232 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     window.toggleTheory = toggleTheory;
 
+    // ─────────────────────────────────────────────────────────────────────
+    // VOICINGS POPOVER
+    // ─────────────────────────────────────────────────────────────────────
+    // Tap the chord label to open a small overlay with 2-4 alternative
+    // voicings for the active chord. Each voicing is a transposable shape
+    // from a hand-rolled library; clicking plays the chord through a
+    // simple Web Audio synth and briefly paints it on the main fretboard
+    // until the next playedBeatChanged fires.
+    //
+    // Shapes are array-of-6 fret offsets relative to a root fret on a
+    // particular root string (alphaTab convention: s1 = high E … s6 = low
+    // E). Index 0 → s6 (low E), index 5 → s1 (high E). null = mute.
+    const VOICING_SHAPES = {
+        'M':    [{ name: 'E-shape',     rs: 6, frets: [0, 2, 2, 1, 0, 0] },
+                 { name: 'A-shape',     rs: 5, frets: [null, 0, 2, 2, 2, 0] }],
+        'm':    [{ name: 'Em-shape',    rs: 6, frets: [0, 2, 2, 0, 0, 0] },
+                 { name: 'Am-shape',    rs: 5, frets: [null, 0, 2, 2, 1, 0] }],
+        '7':    [{ name: 'E7-shape',    rs: 6, frets: [0, 2, 0, 1, 0, 0] },
+                 { name: 'A7-shape',    rs: 5, frets: [null, 0, 2, 0, 2, 0] }],
+        'm7':   [{ name: 'Em7-shape',   rs: 6, frets: [0, 2, 0, 0, 0, 0] },
+                 { name: 'Am7-shape',   rs: 5, frets: [null, 0, 2, 0, 1, 0] }],
+        'maj7': [{ name: 'Emaj7-shape', rs: 6, frets: [0, 2, 1, 1, 0, 0] },
+                 { name: 'Amaj7-shape', rs: 5, frets: [null, 0, 2, 1, 2, 0] }],
+        'dim':  [{ name: 'dim',         rs: 5, frets: [null, 0, 1, 2, 1, null] }],
+        'dim7': [{ name: 'dim7',        rs: 5, frets: [null, 0, 1, 2, 1, 2] }],
+        'aug':  [{ name: 'aug',         rs: 5, frets: [null, 0, 3, 2, 2, 1] }],
+        'm7b5': [{ name: 'm7b5',        rs: 5, frets: [null, 0, 1, 0, 1, null] }],
+        'sus4': [{ name: 'sus4 E',      rs: 6, frets: [0, 2, 2, 2, 0, 0] }],
+        'sus2': [{ name: 'sus2 A',      rs: 5, frets: [null, 0, 2, 4, 0, 0] }],
+    };
+    const VOICING_QUALITIES = ['','m','7','m7','maj7','dim','dim7','aug','sus4','sus2'];
+
+    function chordQualityKeyForVoicing(c) {
+        const t = (c?.type || '').toLowerCase();
+        if (/half|m7b5/.test(t))                 return 'm7b5';
+        if (/diminished seventh/.test(t))        return 'dim7';
+        if (/diminished/.test(t))                return 'dim';
+        if (/augmented/.test(t))                 return 'aug';
+        if (/dominant/.test(t))                  return '7';
+        if (/major seventh|major ninth|major thirteenth/.test(t)) return 'maj7';
+        if (/minor seventh|minor ninth/.test(t)) return 'm7';
+        if (/minor/.test(t))                     return 'm';
+        if (/suspended fourth/.test(t))          return 'sus4';
+        if (/suspended second/.test(t))          return 'sus2';
+        return 'M';
+    }
+
+    function computeVoicing(symbol, shape) {
+        if (typeof Tonal === 'undefined') return null;
+        const c = Tonal.Chord.get(symbol);
+        if (c.empty || !c.tonic) return null;
+        const rootPc = Tonal.Note.get(c.tonic).chroma;
+        if (rootPc == null) return null;
+        const rsMidi = STRING_MIDI_BY_AT[shape.rs];
+        const rootFret = ((rootPc - (rsMidi % 12)) % 12 + 12) % 12;
+        const out = [];
+        for (let i = 0; i < 6; i++) {
+            const string = 6 - i;  // i=0 → s6, i=5 → s1
+            const offset = shape.frets[i];
+            if (offset == null) out.push({ string, fret: null });
+            else out.push({ string, fret: rootFret + offset });
+        }
+        return out;
+    }
+
+    // Render a small chord diagram. Top row = low E to match the main
+    // fretboard's "tab view" orientation.
+    function renderVoicingDiagram(positions, label) {
+        const played = positions.filter(p => p.fret !== null && p.fret > 0).map(p => p.fret);
+        const minF = played.length ? Math.max(0, Math.min(...played) - 1) : 0;
+        const maxF = played.length ? Math.max(minF + 4, Math.max(...played) + 1) : 4;
+        const span = Math.max(4, maxF - minF);
+        const w = 84, h = 78, padTop = 14, padLeft = 12, padRight = 8, padBottom = 12;
+        const fw = (w - padLeft - padRight) / span;
+        const sg = (h - padTop - padBottom) / 5;
+        const parts = [`<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`];
+        for (let s = 0; s < 6; s++) {
+            const y = padTop + s * sg;
+            parts.push(`<line x1="${padLeft}" y1="${y}" x2="${w-padRight}" y2="${y}" stroke="#d8d8d8" stroke-width="0.6"/>`);
+        }
+        const nutThick = minF === 0 ? 2 : 0.6;
+        for (let i = 0; i <= span; i++) {
+            const x = padLeft + i * fw;
+            parts.push(`<line x1="${x}" y1="${padTop}" x2="${x}" y2="${h-padBottom}" stroke="#a89070" stroke-width="${i === 0 ? nutThick : 0.6}"/>`);
+        }
+        if (minF > 0) parts.push(`<text x="${padLeft - 2}" y="${padTop + 4}" font-size="8" fill="#94a3b8" text-anchor="end">${minF + 1}</text>`);
+        for (const p of positions) {
+            // p.string 6 → top row (low E), p.string 1 → bottom row (high E).
+            const row = 6 - p.string;
+            const y = padTop + row * sg;
+            if (p.fret === null) {
+                parts.push(`<text x="${padLeft - 5}" y="${y + 3}" font-size="9" fill="#94a3b8" text-anchor="middle">×</text>`);
+            } else if (p.fret === 0) {
+                parts.push(`<circle cx="${padLeft - 5}" cy="${y}" r="3" fill="none" stroke="#fff" stroke-width="1"/>`);
+            } else {
+                const fi = p.fret - minF;
+                const cx = padLeft + (fi - 0.5) * fw;
+                parts.push(`<circle cx="${cx}" cy="${y}" r="4" fill="#e94560" stroke="#fff" stroke-width="0.8"/>`);
+            }
+        }
+        if (label) parts.push(`<text x="${w/2}" y="${h - 2}" font-size="8" fill="#94a3b8" text-anchor="middle">${label}</text>`);
+        parts.push('</svg>');
+        return parts.join('');
+    }
+
+    // Strum a voicing via Web Audio (sawtooth + lowpass + per-note envelope).
+    let vpAudioCtx = null;
+    function vpAudio() {
+        if (!vpAudioCtx) {
+            const Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            vpAudioCtx = new Ctor();
+        }
+        if (vpAudioCtx.state === 'suspended') vpAudioCtx.resume();
+        return vpAudioCtx;
+    }
+    function playVoicing(positions) {
+        const ctx = vpAudio();
+        if (!ctx) return;
+        const order = [...positions]
+            .filter(p => p.fret !== null)
+            .sort((a, b) => b.string - a.string);  // low to high
+        const now = ctx.currentTime + 0.02;
+        order.forEach((p, i) => {
+            const midi = STRING_MIDI_BY_AT[p.string] + p.fret;
+            const freq = 440 * Math.pow(2, (midi - 69) / 12);
+            const t0 = now + i * 0.014;
+            const osc = ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.value = freq;
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0, t0);
+            gain.gain.linearRampToValueAtTime(0.14, t0 + 0.005);
+            gain.gain.exponentialRampToValueAtTime(0.001, t0 + 1.5);
+            const lp = ctx.createBiquadFilter();
+            lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = 0.4;
+            osc.connect(lp); lp.connect(gain); gain.connect(ctx.destination);
+            osc.start(t0); osc.stop(t0 + 1.6);
+        });
+    }
+
+    function paintVoicingPreview(positions) {
+        fbDotMap.forEach(el => {
+            el.getAnimations().forEach(a => a.cancel());
+            el.setAttribute('fill', 'transparent');
+            el.setAttribute('stroke', 'transparent');
+            el.setAttribute('r', '5.5');
+            el.style.opacity = '';
+        });
+        fbTxtMap.forEach(el => { el.style.opacity = '0'; el.textContent = ''; });
+        for (const p of positions) {
+            if (p.fret == null) continue;
+            const mapped = FB.strings - p.string + 1;
+            const el = fbDotMap.get(`${mapped}-${p.fret}`);
+            if (el) {
+                el.setAttribute('fill', '#e94560');
+                el.setAttribute('stroke', '#fff');
+                el.setAttribute('stroke-width', '1.5');
+                el.setAttribute('r', '7.5');
+                el.style.opacity = '1';
+            }
+        }
+    }
+
+    let vpQualityOverride = null;
+    function openVoicings(symbolOverride) {
+        const base = (symbolOverride || activeChordName || '').replace(/[^A-G#b]/g, '');
+        if (!base) return;
+        const pop = document.getElementById('voicings-popover');
+        if (!pop) return;
+        // Effective symbol = root + quality override (or original quality).
+        const sym = vpQualityOverride != null
+            ? base + vpQualityOverride
+            : (symbolOverride || activeChordName);
+        const c = (typeof Tonal !== 'undefined') ? Tonal.Chord.get(sym) : null;
+        const qKey = c && !c.empty ? chordQualityKeyForVoicing(c) : 'M';
+
+        document.getElementById('vp-title').textContent = sym;
+        document.getElementById('vp-quality').textContent = c?.type ? `(${c.type})` : '';
+
+        const qRow = document.getElementById('vp-quality-row');
+        qRow.innerHTML = '';
+        for (const q of VOICING_QUALITIES) {
+            const b = document.createElement('button');
+            b.className = 'vp-q' + (q === (vpQualityOverride ?? '') ? ' on' : '');
+            b.textContent = base + q;
+            b.onclick = () => { vpQualityOverride = q; openVoicings(); };
+            qRow.appendChild(b);
+        }
+
+        const shapes = VOICING_SHAPES[qKey] || VOICING_SHAPES['M'];
+        const wrap = document.getElementById('vp-shapes');
+        wrap.innerHTML = '';
+        for (const shape of shapes) {
+            const positions = computeVoicing(sym, shape);
+            if (!positions) continue;
+            const btn = document.createElement('button');
+            btn.className = 'vp-item';
+            btn.innerHTML = renderVoicingDiagram(positions, shape.name);
+            btn.onclick = () => { playVoicing(positions); paintVoicingPreview(positions); };
+            wrap.appendChild(btn);
+        }
+        pop.classList.add('open');
+        pop.setAttribute('aria-hidden', 'false');
+    }
+    function closeVoicings() {
+        const pop = document.getElementById('voicings-popover');
+        if (pop) { pop.classList.remove('open'); pop.setAttribute('aria-hidden', 'true'); }
+        vpQualityOverride = null;
+    }
+    window.closeVoicings = closeVoicings;
+    document.addEventListener('click', (e) => {
+        const pop = document.getElementById('voicings-popover');
+        if (!pop || !pop.classList.contains('open')) return;
+        if (pop.contains(e.target)) return;
+        if (e.target.closest('#fb-chord-label')) return;
+        closeVoicings();
+    });
+
     const chordLabelBtn = document.getElementById('fb-chord-label');
     if (chordLabelBtn) {
-        chordLabelBtn.onclick = () => {
+        chordLabelBtn.onclick = (e) => {
+            e.stopPropagation();
             if (!activeChordName) return;
-            if (extCycle === 0) baseChord = activeChordName.replace(/[^A-G#b]/g, ''); 
-            extCycle = (extCycle + 1) % 3;
-            
-            if (extCycle === 0) activeChordName = baseChord;         
-            if (extCycle === 1) activeChordName = baseChord + "maj7"; 
-            if (extCycle === 2) activeChordName = baseChord + "13";   
-            
-            repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+            vpQualityOverride = null;
+            openVoicings();
         };
     }
 
@@ -1027,6 +1284,25 @@ document.addEventListener("DOMContentLoaded", function() {
                             dot.setAttribute('r', '5.5');
                         }
                     }
+                }
+            }
+        }
+
+        // Note-name overlay: replace interval labels with absolute pitch
+        // names on every fret position. Highlighted dots keep full
+        // opacity; empty positions render the name at low opacity as a
+        // fretboard-memorisation aid.
+        if (showNoteNames) {
+            for (let s = 1; s <= FB.strings; s++) {
+                for (let f = 0; f <= FB.frets; f++) {
+                    const midi = standardTuningMidi[s - 1] + f;
+                    const dot = fbDotMap.get(`${s}-${f}`);
+                    const txt = fbTxtMap.get(`${s}-${f}`);
+                    if (!dot || !txt) continue;
+                    txt.textContent = NOTE_NAMES_SHARP[midi % 12];
+                    const fill = dot.getAttribute('fill');
+                    const lit = fill && fill !== 'transparent';
+                    txt.style.opacity = lit ? '1' : '0.30';
                 }
             }
         }
