@@ -864,19 +864,28 @@ document.addEventListener("DOMContentLoaded", function() {
     // 3rds — adjacent string pairs (higher pitch on lower-numbered string
     //        in alphaTab convention, since s1 = high E).
     // 6ths — skip-one-string pairs.
+    // Both 3rds and 6ths are played on ADJACENT string pairs in the
+    // Cuban / Latin guitar idiom (son, bolero, danzón, guajira). The
+    // string tuning supplies 4-5 semitones; the upper string moves
+    // forward 0-1 frets for 3rds (m3/M3 ≈ 3-4 semitones) and 3-5 frets
+    // for 6ths (m6/M6 ≈ 8-9 semitones). This is the iconic Chan Chan /
+    // Compay Segundo voicing on (B + high E) and the bolero figure on
+    // (G + B). Skip-string 6ths (G + high E same fret) are jazz/folk
+    // territory and not what's used here.
     const INTERVAL_STRING_PAIRS = {
         '3rds': [
-            { hi: 1, lo: 2 }, // high E + B
-            { hi: 2, lo: 3 }, // B + G
-            { hi: 3, lo: 4 }, // G + D
-            { hi: 4, lo: 5 }, // D + A
-            { hi: 5, lo: 6 }, // A + low E
+            { hi: 1, lo: 2 },  // high E + B
+            { hi: 2, lo: 3 },  // B + G
+            { hi: 3, lo: 4 },  // G + D
+            { hi: 4, lo: 5 },  // D + A
+            { hi: 5, lo: 6 },  // A + low E
         ],
         '6ths': [
-            { hi: 1, lo: 3 }, // high E + G  (skip B)
-            { hi: 2, lo: 4 }, // B + D       (skip G)
-            { hi: 3, lo: 5 }, // G + A       (skip D)
-            { hi: 4, lo: 6 }, // D + low E   (skip A)
+            { hi: 1, lo: 2 },  // high E + B — Chan Chan / son
+            { hi: 2, lo: 3 },  // B + G — bolero rhythm
+            { hi: 3, lo: 4 },  // G + D — descending cadences
+            { hi: 4, lo: 5 },  // D + A
+            { hi: 5, lo: 6 },  // A + low E
         ],
     };
     const INTERVAL_COLORS = { '3rds': '#3b82f6', '6ths': '#f97316' };
