@@ -172,6 +172,12 @@
         <option value="4">Pos 4</option>
         <option value="5">Pos 5</option>
     </select>
+    <select id="interval-pattern" title="Diatonic 3rds / 6ths double-stop overlay (Cuban / Latin / Spanish guitar vocabulary). Each pair is drawn with a connecting line." onchange="setIntervalPattern(this.value)" style="background:#1e293b;color:#fbbf24;border:1px solid #334155;border-radius:4px;padding:3px 4px;font-size:0.75rem;">
+        <option value="off">Intervals: Off</option>
+        <option value="3rds">3rds</option>
+        <option value="6ths">6ths</option>
+        <option value="both">3rds + 6ths</option>
+    </select>
     <button class="sbtn" id="btn-related" title="Overlay the related chord (V7→dim7 substitution, minor↔relative major) as a pink stroke" onclick="toggleRelated()" style="color:#ec4899;">🔗 REL</button>
     <button class="sbtn" id="btn-notes" title="Show note names on every fret instead of interval labels" onclick="toggleNoteNames()" style="color:#a3e635;">🔤 NOTES</button>
     <span class="sep">|</span>
@@ -255,6 +261,7 @@ document.addEventListener("DOMContentLoaded", function() {
     let scaleBox = 'all';           // 'all'|'1'|'2'|'3'|'4'|'5'
     let showRelated = false;
     let showNoteNames = false;
+    let intervalPattern = 'off';   // 'off'|'3rds'|'6ths'|'both'
     let activeChordName = "";
     let songKey = null;             // { tonic: 'B', mode: 'minor' } | null
     let extCycle = 0;
@@ -847,6 +854,134 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     // ─────────────────────────────────────────────────────────────────────
+    // INTERVAL PATTERNS — diatonic 3rds + 6ths overlay
+    // ─────────────────────────────────────────────────────────────────────
+    // Core vocabulary of Cuban / son / bolero / danzón / flamenco guitar:
+    // diatonic 3rds on adjacent strings and 6ths on skip-one-string pairs,
+    // walked through the parent scale. Use Harmonic Minor for the
+    // Spanish-Cuban flavour (the augmented 2nd gives the colour).
+    //
+    // 3rds — adjacent string pairs (higher pitch on lower-numbered string
+    //        in alphaTab convention, since s1 = high E).
+    // 6ths — skip-one-string pairs.
+    const INTERVAL_STRING_PAIRS = {
+        '3rds': [
+            { hi: 1, lo: 2 }, // high E + B
+            { hi: 2, lo: 3 }, // B + G
+            { hi: 3, lo: 4 }, // G + D
+            { hi: 4, lo: 5 }, // D + A
+            { hi: 5, lo: 6 }, // A + low E
+        ],
+        '6ths': [
+            { hi: 1, lo: 3 }, // high E + G  (skip B)
+            { hi: 2, lo: 4 }, // B + D       (skip G)
+            { hi: 3, lo: 5 }, // G + A       (skip D)
+            { hi: 4, lo: 6 }, // D + low E   (skip A)
+        ],
+    };
+    const INTERVAL_COLORS = { '3rds': '#3b82f6', '6ths': '#f97316' };
+
+    function setIntervalPattern(v) {
+        intervalPattern = v;
+        try { localStorage.setItem('alphaTab.intervalPattern', v); } catch (_) {}
+        const sel = document.getElementById('interval-pattern');
+        if (sel && sel.value !== v) sel.value = v;
+        repaintFretboard(lastPaintedBarIdx, lastActiveNotes);
+        updateKeyStrip();
+    }
+    window.setIntervalPattern = setIntervalPattern;
+    try {
+        const saved = localStorage.getItem('alphaTab.intervalPattern');
+        if (saved) intervalPattern = saved;
+    } catch (_) {}
+    document.addEventListener('DOMContentLoaded', () => {
+        const sel = document.getElementById('interval-pattern');
+        if (sel) sel.value = intervalPattern;
+    });
+
+    // Paint every diatonic 3rd/6th pair within the active scale.
+    //
+    // Strategy: for each (hi, lo) string pair and each fret on the lower
+    // string that lands on a scale tone, look up the scale-step above
+    // (+2 steps for 3rds, +5 for 6ths) and find the fret on the higher
+    // string carrying that chroma at a sensible musical distance
+    // (semitones in [2, 5] for 3rds, [7, 11] for 6ths).
+    function paintIntervalPattern(scaleAscChromas) {
+        if (intervalPattern === 'off' || !scaleAscChromas?.length) return;
+        const svg = document.querySelector('#fretboard svg');
+        if (!svg) return;
+        let layer = svg.querySelector('#fb-interval-pairs');
+        if (!layer) {
+            layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            layer.setAttribute('id', 'fb-interval-pairs');
+            svg.appendChild(layer);
+        }
+        layer.innerHTML = '';
+
+        const patterns = intervalPattern === 'both' ? ['3rds', '6ths'] : [intervalPattern];
+
+        for (const pat of patterns) {
+            const colour = INTERVAL_COLORS[pat];
+            const steps = pat === '3rds' ? 2 : 5;   // diatonic interval in scale steps
+            const minSemis = pat === '3rds' ? 2 : 7;
+            const maxSemis = pat === '3rds' ? 5 : 11;
+            for (const { hi, lo } of INTERVAL_STRING_PAIRS[pat]) {
+                const loTune = STRING_MIDI_BY_AT[lo];
+                const hiTune = STRING_MIDI_BY_AT[hi];
+                for (let lf = 0; lf <= FB.frets; lf++) {
+                    const loMidi = loTune + lf;
+                    const loChroma = loMidi % 12;
+                    const loIdx = scaleAscChromas.indexOf(loChroma);
+                    if (loIdx < 0) continue;
+                    const hiTargetChroma = scaleAscChromas[(loIdx + steps) % scaleAscChromas.length];
+                    // Scan a narrow fret window on the higher string for the
+                    // target chroma at the right semitone gap.
+                    for (let hf = Math.max(0, lf - 4); hf <= Math.min(FB.frets, lf + 6); hf++) {
+                        const hiMidi = hiTune + hf;
+                        const semis = hiMidi - loMidi;
+                        if (semis < minSemis || semis > maxSemis) continue;
+                        if (hiMidi % 12 !== hiTargetChroma) continue;
+                        paintIntervalPair(hi, hf, lo, lf, colour, layer);
+                        break; // one pair per lower-string fret
+                    }
+                }
+            }
+        }
+    }
+
+    function paintIntervalPair(hiStr, hiFret, loStr, loFret, colour, layer) {
+        const hiMapped = FB.strings - hiStr + 1;
+        const loMapped = FB.strings - loStr + 1;
+        const hiDot = fbDotMap.get(`${hiMapped}-${hiFret}`);
+        const loDot = fbDotMap.get(`${loMapped}-${loFret}`);
+        if (!hiDot || !loDot) return;
+        for (const dot of [hiDot, loDot]) {
+            const fill = dot.getAttribute('fill');
+            if (!fill || fill === 'transparent') {
+                dot.setAttribute('fill', colour);
+                dot.setAttribute('r', '5.5');
+                dot.style.opacity = '0.9';
+            }
+            dot.setAttribute('stroke', colour);
+            dot.setAttribute('stroke-width', '1.5');
+        }
+        const x1 = parseFloat(hiDot.getAttribute('cx'));
+        const y1 = parseFloat(hiDot.getAttribute('cy'));
+        const x2 = parseFloat(loDot.getAttribute('cx'));
+        const y2 = parseFloat(loDot.getAttribute('cy'));
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2);
+        line.setAttribute('y2', y2);
+        line.setAttribute('stroke', colour);
+        line.setAttribute('stroke-width', '1.5');
+        line.setAttribute('stroke-opacity', '0.55');
+        line.setAttribute('stroke-linecap', 'round');
+        layer.appendChild(line);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // KEY DETECTION + ROMAN NUMERAL STRIP
     // ─────────────────────────────────────────────────────────────────────
     // Map alphaTab's keySignature (-7..+7 = flats/sharps) to a major
@@ -935,6 +1070,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 const sn = chordToScaleName(c, scaleFlavour);
                 parts.push(`<span class="ks-key">Scale:</span> ${c.tonic} ${sn}` + (scaleBox !== 'all' ? ` · Pos ${scaleBox}` : ''));
             }
+        }
+        if (intervalPattern !== 'off') {
+            parts.push(`<span class="ks-rom">Intervals:</span> ${intervalPattern}`);
         }
         el.innerHTML = parts.join(' &nbsp;·&nbsp; ') || '—';
     }
@@ -1305,6 +1443,34 @@ document.addEventListener("DOMContentLoaded", function() {
                     txt.style.opacity = lit ? '1' : '0.30';
                 }
             }
+        }
+
+        // Interval pattern overlay (3rds / 6ths). Works independently of
+        // the scale/arp overlay. Scale source preference:
+        //   1. parent scale of the active chord (using current flavour)
+        //   2. fallback to the detected song key (Aeolian for minor, major
+        //      otherwise) so the pattern still draws before any chord
+        //      symbol has been seen.
+        if (intervalPattern !== 'off' && typeof Tonal !== 'undefined') {
+            let scaleChromas = null;
+            if (activeChordName) {
+                const cd = Tonal.Chord.get(activeChordName);
+                if (!cd.empty && cd.tonic) {
+                    const sData = Tonal.Scale.get(`${cd.tonic} ${chordToScaleName(cd, scaleFlavour)}`);
+                    if (!sData.empty) scaleChromas = sData.notes.map(n => Tonal.Note.chroma(n));
+                }
+            }
+            if (!scaleChromas && songKey?.tonic) {
+                const sName = songKey.mode === 'minor' ? 'aeolian' : 'major';
+                const sData = Tonal.Scale.get(`${songKey.tonic} ${sName}`);
+                if (!sData.empty) scaleChromas = sData.notes.map(n => Tonal.Note.chroma(n));
+            }
+            if (scaleChromas) paintIntervalPattern(scaleChromas);
+        } else {
+            // Clean stale pair lines when pattern is turned off.
+            const svg = document.querySelector('#fretboard svg');
+            const layer = svg?.querySelector('#fb-interval-pairs');
+            if (layer) layer.innerHTML = '';
         }
 
         const barSet = barNotesMap?.get(barIdx);
